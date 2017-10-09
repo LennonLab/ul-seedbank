@@ -30,6 +30,9 @@ OTUs <- readRDS(file = "data/Rdata/OTUs_97-124.rda")
 design <- read.csv(file = "data/design.csv")
 
 # Make rel abund matrices and split into active total comms
-OTUs.REL <- decostand(OTUs, method = "total")
+OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.active <- OTUs.REL[which(design$sample.type == "RNA"),]
+
+# read in environmental data
+env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
