@@ -1,4 +1,3 @@
-ULD024_demultiplex	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL-24DNA_S25_L001_R1_001-MS-demultiplex.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL-24DNA_S25_L001_R2_001-MS-demultiplex.fastq
 ULD001	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_01DNA_S2_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_01DNA_S2_L001_R2_001.fastq
 ULD002	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_02DNA_S3_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_02DNA_S3_L001_R2_001.fastq
 ULD003	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_03DNA_S4_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_03DNA_S4_L001_R2_001.fastq
@@ -22,7 +21,7 @@ ULD020	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_20DNA_S21_L001_R
 ULD021	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_21DNA_S22_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_21DNA_S22_L001_R2_001.fastq
 ULD022	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_22DNA_S23_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_22DNA_S23_L001_R2_001.fastq
 ULD023	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_23DNA_S24_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_23DNA_S24_L001_R2_001.fastq
-ULD024	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_24DNA_S25_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_24DNA_S25_L001_R2_001.fastq
+ULD024	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL-24DNA_S25_L001_R1_001-MS-demultiplex.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL-24DNA_S25_L001_R2_001-MS-demultiplex.fastq
 ULD025	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_25DNA_S26_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_25DNA_S26_L001_R2_001.fastq
 ULD026	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_26DNA_S27_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_26DNA_S27_L001_R2_001.fastq
 ULD027	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_27DNA_S28_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_27DNA_S28_L001_R2_001.fastq
@@ -94,8 +93,6 @@ ULD093	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_93DNA_S93_L001_R
 ULD094	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_94DNA_S94_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_94DNA_S94_L001_R2_001.fastq
 ULD095	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_95DNA_S95_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_95DNA_S95_L001_R2_001.fastq
 ULD096	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_96DNA_S96_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-UL_96DNA_S96_L001_R2_001.fastq
-ULD_blank	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-blank_S1_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529A-blank_S1_L001_R2_001.fastq
-ULc024_demultiplex	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL-24cDNA_S25_L001_R1_001-MS-demultiplex.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL-24cDNA_S25_L001_R2_001-MS-demultiplex.fastq
 ULc001	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_01cDNA_S2_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_01cDNA_S2_L001_R2_001.fastq
 ULc002	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_02cDNA_S3_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_02cDNA_S3_L001_R2_001.fastq
 ULc003	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_03cDNA_S4_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_03cDNA_S4_L001_R2_001.fastq
@@ -119,7 +116,7 @@ ULc020	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_20cDNA_S21_L001_
 ULc021	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_21cDNA_S22_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_21cDNA_S22_L001_R2_001.fastq
 ULc022	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_22cDNA_S23_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_22cDNA_S23_L001_R2_001.fastq
 ULc023	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_23cDNA_S24_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_23cDNA_S24_L001_R2_001.fastq
-ULc024	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_24cDNA_S25_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_24cDNA_S25_L001_R2_001.fastq
+ULc024	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL-24cDNA_S25_L001_R1_001-MS-demultiplex.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL-24cDNA_S25_L001_R2_001-MS-demultiplex.fastq
 ULc025	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_25cDNA_S26_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_25cDNA_S26_L001_R2_001.fastq
 ULc026	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_26cDNA_S27_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_26cDNA_S27_L001_R2_001.fastq
 ULc027	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_27cDNA_S28_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_27cDNA_S28_L001_R2_001.fastq
@@ -191,7 +188,6 @@ ULc093	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_93cDNA_S93_L001_
 ULc094	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_94cDNA_S94_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_94cDNA_S94_L001_R2_001.fastq
 ULc095	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_95cDNA_S95_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_95cDNA_S95_L001_R2_001.fastq
 ULc096	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_96cDNA_S96_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-UL_96cDNA_S96_L001_R2_001.fastq
-ULc_blank	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-blank_S1_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/GSF1529B-blank_S1_L001_R2_001.fastq
 ULD097	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-097_S1_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-097_S1_L001_R2_001.fastq
 ULD098	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-098_S2_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-098_S2_L001_R2_001.fastq
 ULD099	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-099_S3_L001_R1_001.fastq	/N/dc2/projects/Lennon_Sequences/ul-seedbank/UL-DNA-099_S3_L001_R2_001.fastq
