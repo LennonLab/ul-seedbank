@@ -5,7 +5,7 @@
 #PBS -m abe
 #PBS -j oe
 cd /N/dc2/projects/Lennon_Sequences/ul-seedbank
-module load gcc/6.3.0
-module load boost/1.64.0
-module load mothur/1.39.5
+module load gcc/4.9.4
+module load boost/1.52.0
+module load mothur/1.38.1
 mothur ul.batch
