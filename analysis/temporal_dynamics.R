@@ -1,34 +1,74 @@
 require(codyn)
+require(viridis)
 
-OTUs.hel <- decostand(OTUs, method = "hellinger")
 
-OTUs.dist <- vegdist(OTUs.hel, method = "euclidean")
+OTUs.dist <- vegdist(OTUs.REL, method = "euclidean", binary = F)
 
-OTUs.pca <- princomp(OTUs.dist)
-OTUs.traj <- OTUs.pca$scores[,c(1,2)]
+# OTUs.pca <- princomp(OTUs.dist)
+# OTUs.traj <- OTUs.pca$scores[,c(1,2)]
 
+OTUs.traj <- cmdscale(OTUs.dist)
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
 active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
 total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
-plot(active.traj, type = 'c', asp = 1, ylim = c(-1.5,1.5), xlim = c(-1.5, 1.5))
-text(labels = seq(97,124,1), x = active.traj[,1], y = active.traj[,2])
-points(total.traj, type = 'c', asp = 1, col = "red")
-text(labels = seq(97,124,1), x = total.traj[,1], y = total.traj[,2], col = "red")
+# active.traj.end <- active.traj[-1,]
+# active.traj.start <- active.traj[-123,]
+# active.traj.full <- cbind(active.traj.start, active.traj.end)
+# colnames(active.traj.full) <- c("PC1.start", "PC2.start", "PC1.end", "PC2.end")
 
-matplot(cbind(total.traj[,1], active.traj[,1]))
+active.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                  ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(2)) + 
+  geom_point(aes(x = active.traj.df$Comp.1[1], y = active.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
+  theme_minimal()
+
+
+
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(2)) + 
+  geom_point(aes(x = total.traj.df$Comp.1[1], y = total.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
+  theme_minimal()
+
+
+  ggplot(aes(x = Comp.1, y = Comp.2, col = Sample.Num)) + 
+  geom_line()
+
+
+matplot(cbind(total.traj[,1], active.traj[,1]), type = 'l', ylab = "PCoA1", xlab = "Week")
+matplot(cbind(total.traj[,2], active.traj[,2]), type = 'l', ylab = "PCoA2", xlab = "Week")
+
 active.dists <- as.matrix(OTUs.dist)[which(design$sample.type == "RNA"),which(design$sample.type == "RNA")]
 total.dists <- as.matrix(OTUs.dist)[which(design$sample.type == "DNA"),which(design$sample.type == "DNA")]
-plot(design$sample.number[which(design$sample.type == "RNA")], active.dists[,1])
-plot(design$sample.number[which(design$sample.type == "RNA")], total.dists[,1])
+plot(design$sample.id[which(design$sample.type == "RNA")], active.dists[,1])
+plot(design$sample.id[which(design$sample.type == "DNA")], total.dists[,1])
 
 
 
 ## organize data structure for codyn
-OTUs.long <- OTUs.REL
+OTUs.long <- as.data.frame(OTUs.REL)
 OTUs.long$mol <- design$sample.type
-OTUs.long$number <- design$sample.number
+OTUs.long$number <- design$sample.id
 OTUs.long <- gather(OTUs.long, key = otu, value = abundance, -mol, -number)
 
+# Calculate turnover
 turn.total <- turnover(df = OTUs.long, 
                  time.var = "number",
                  species.var = "otu",
@@ -62,9 +102,9 @@ ul.mrs <- rank_shift(df = OTUs.long,
            replicate.var = "mol")
 ul.mrs
 
-ul.mrs$year <- abs(as.numeric(substr(ul.mrs$year_pair, 4, 7)))
+ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
 
-# Create ggplot
+# Create plot
 rankshift.plot <- ggplot(ul.mrs, aes(x = year, y = MRS, color = mol)) + 
   geom_line(size = 1) + 
   xlab("Week") + 
@@ -78,3 +118,22 @@ group_by(ul.mrs, mol) %>%
   summarise(
     mean = mean(MRS),
     cv = sd(MRS)/mean)
+
+
+# Rate change interval
+ul.rci <- rate_change_interval(df = OTUs.long,
+                     time.var = "number",
+                     species.var = "otu", 
+                     abundance.var = "abundance",
+                     replicate.var = "mol")
+
+ul.rci
+rate.plot <- ggplot(ul.rci, aes(interval, distance)) +
+  geom_point() + 
+  facet_wrap(~mol) +
+  theme(strip.text.x = element_text(size = 7)) +
+  stat_smooth(method = "loess", se = F, size = 1) + 
+  ylab("Hellinger Distance") + 
+  xlab("Time Interval (Weeks)") +
+  theme_minimal()
+rate.plot

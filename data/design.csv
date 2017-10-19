@@ -1,4 +1,4 @@
-"sample.ID","sample.type","sample.number"
+"sample.name","sample.type","sample.id"
 "ULD001","DNA",1
 "ULD002","DNA",2
 "ULD003","DNA",3
