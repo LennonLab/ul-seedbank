@@ -1,8 +1,8 @@
 require(codyn)
 require(viridis)
+require(betapart)
 
-
-OTUs.dist <- vegdist(OTUs.REL, method = "euclidean", binary = F)
+OTUs.dist <- vegdist(OTUs.REL, method = "bray")
 
 # OTUs.pca <- princomp(OTUs.dist)
 # OTUs.traj <- OTUs.pca$scores[,c(1,2)]
@@ -47,9 +47,6 @@ full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
   theme_minimal()
 
-
-  ggplot(aes(x = Comp.1, y = Comp.2, col = Sample.Num)) + 
-  geom_line()
 
 
 matplot(cbind(total.traj[,1], active.traj[,1]), type = 'l', ylab = "PCoA1", xlab = "Week")
@@ -137,3 +134,55 @@ rate.plot <- ggplot(ul.rci, aes(interval, distance)) +
   xlab("Time Interval (Weeks)") +
   theme_minimal()
 rate.plot
+
+
+# Partition nestedness and turnover
+OTUs.pa <- decostand(OTUs, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+
+OTUs.traj <- cmdscale(OTUs.turn)
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
+total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
+
+# active.traj.end <- active.traj[-1,]
+# active.traj.start <- active.traj[-123,]
+# active.traj.full <- cbind(active.traj.start, active.traj.end)
+# colnames(active.traj.full) <- c("PC1.start", "PC2.start", "PC1.end", "PC2.end")
+
+active.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(2)) + 
+  geom_point(aes(x = active.traj.df$Comp.1[1], y = active.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
+  theme_minimal()
+
+
+
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(2)) + 
+  geom_point(aes(x = total.traj.df$Comp.1[1], y = total.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
+  theme_minimal()
+
+
+matplot(cbind(total.traj[,1], active.traj[,1]), type = 'l', ylab = "PCoA1", xlab = "Week")
+matplot(cbind(total.traj[,2], active.traj[,2]), type = 'l', ylab = "PCoA2", xlab = "Week")
+
