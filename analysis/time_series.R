@@ -1,7 +1,54 @@
-par(mfrow = c(3,1))
-matplot(OTUs.REL.active[,1], type = "l")
-matplot(OTUs.REL.active[,2], type = "l")
-matplot(OTUs.REL.active[,6], type = "l")
+pdf("figures/taxa_dynamics.pdf", bg = "white", width = 8, height = 10)
+par(mfrow = c(3,1), oma = c(2,2,2,2))
+matplot(OTUs.REL.active[,1], type = "l", yaxt = "n", xaxt = "n",
+        ylab = "", xlab = "", lwd = 2)
+box(lwd=2)
+mtext(expression(italic("Anabaena sp.")), side = 2,
+      outer = F, cex = 1.5, line = 3, adj = 0.5)  
+
+# Major Axes
+axis(side = 2, lwd.ticks = 2, tck = -0.02, cex.axis = 1.5, las = 1,
+     labels = T)
+axis(side = 4, lwd.ticks = 2, cex.axis = 1, las = 1,
+     labels = F)
+axis(side = 1, lwd.ticks = 2, tck = -0.02, cex.axis = 1, las = 1,
+     labels = F, at = c(1, 25, 50, 75, 100, 125))
+axis(side = 3, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+     at = c(1, 25, 50, 75, 100, 125), labels = F)
+
+matplot(OTUs.REL.active[,2], type = "l", yaxt = "n", xaxt = "n",
+        ylab = "", xlab = "", lwd = 2)
+box(lwd=2)
+mtext(expression(italic("Limnohabitans sp.")), side = 2,
+      outer = F, cex = 1.5, line = 3, adj = 0.5)  
+# Major Axes
+axis(side = 2, lwd.ticks = 2, tck = -0.02, cex.axis = 1.5, las = 1,
+     labels = T)
+axis(side = 4, lwd.ticks = 2, cex.axis = 1, las = 1,
+     labels = F)
+axis(side = 1, lwd.ticks = 2, tck = -0.02, cex.axis = 1, las = 1,
+     labels = F, at = c(1, 25, 50, 75, 100, 125))
+axis(side = 3, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+     at = c(1, 25, 50, 75, 100, 125), labels = F)
+
+
+matplot(OTUs.REL.active[,6], type = "l", yaxt = "n", xaxt = "n",
+        ylab = "", xlab = "", lwd = 2)
+box(lwd=2)
+mtext(expression(italic("Terrimicrobium sp.")), side = 2,
+      outer = F, cex = 1.5, line = 3, adj = 0.5)  
+
+# Major Axes
+axis(side = 2, lwd.ticks = 2, tck = -0.02, cex.axis = 1.5, las = 1,
+     labels = T)
+axis(side = 4, lwd.ticks = 2, cex.axis = 1, las = 1,
+     labels = F)
+axis(side = 1, lwd.ticks = 2, tck = -0.02, cex.axis = 1.5, las = 1,
+     labels = T, at = c(1, 25, 50, 75, 100, 125))
+axis(side = 3, lwd.ticks = 2, cex.axis = 1.5, las = 1,
+     at = c(1, 25, 50, 75, 100, 125), labels = F)
+mtext("Time (Weeks)", side = 1, line = 3.5, cex = 1.5)
+dev.off()
 
 par(mfrow = c(3,1))
 matplot(OTUs.REL.total[,1], type = "l")

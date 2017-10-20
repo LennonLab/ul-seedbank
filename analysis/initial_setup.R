@@ -27,6 +27,8 @@ require(lubridate)
 # 
 # write.csv(design, file = "data/design.csv", row.names = F)
 # saveRDS(OTUs, file = "data/Rdata/OTUs.rda")
+# saveRDS(OTUs.tax, file = "data/Rdata/OTUtax.rda")
+OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
 OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
 design <- read.csv(file = "data/design.csv")
 
@@ -35,9 +37,9 @@ OTUs <- OTUs[,-which(colSums(OTUs) < 3)]
 
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
-OTUs[which(design$sample.type == "DNA"),] <- decostand(OTUs.active, method = "pa") + OTUs.total
+#OTUs[which(design$sample.type == "DNA"),] <- decostand(OTUs.active, method = "pa") + OTUs.total
 
-OTUs.REL <- decostand(OTUs, method = "log")
+OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 

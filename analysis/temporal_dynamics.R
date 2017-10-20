@@ -2,7 +2,7 @@ require(codyn)
 require(viridis)
 require(betapart)
 
-OTUs.dist <- vegdist(OTUs.REL, method = "bray")
+OTUs.dist <- vegdist(OTUs.REL, method = "euclidean")
 
 # OTUs.pca <- princomp(OTUs.dist)
 # OTUs.traj <- OTUs.pca$scores[,c(1,2)]
@@ -19,34 +19,39 @@ total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
 active.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+pdf("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                   ends = "last", type = "closed")) + 
-  scale_color_gradientn(colors = viridis(2)) + 
+  scale_color_gradientn(colors = viridis(125), "Sample Number") + 
   geom_point(aes(x = active.traj.df$Comp.1[1], y = active.traj.df$Comp.2[1]),
              color = viridis(2)[1], size = 3) +
   geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
              color = viridis(2)[2], size = 3) +
-  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
-  theme_minimal()
+  theme_cowplot() + 
+  xlab("PCoA 1") + 
+  ylab("PCoA 2")
+dev.off()
 
 
 
 total.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+pdf("figures/total_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                           ends = "last", type = "closed")) + 
-  scale_color_gradientn(colors = viridis(2)) + 
+  scale_color_gradientn(colors = magma(125)) + 
   geom_point(aes(x = total.traj.df$Comp.1[1], y = total.traj.df$Comp.2[1]),
-             color = viridis(2)[1], size = 3) +
+             color = magma(2)[1], size = 3) +
   geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
-             color = viridis(2)[2], size = 3) +
-  coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE) +
-  theme_minimal()
-
+             color = magma(2)[2], size = 3) +
+  theme_cowplot()+
+  xlab("PCoA 1")+
+  ylab("PCoA 2")
+dev.off()
 
 
 matplot(cbind(total.traj[,1], active.traj[,1]), type = 'l', ylab = "PCoA1", xlab = "Week")
@@ -100,18 +105,20 @@ ul.mrs <- rank_shift(df = OTUs.long,
 ul.mrs
 
 ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
-
+names(ul.mrs)[3] <- "Molecule"
 # Create plot
-rankshift.plot <- ggplot(ul.mrs, aes(x = year, y = MRS, color = mol)) + 
-  geom_line(size = 1) + 
-  xlab("Week") + 
+pdf("figures/mean_rank_shift.pdf", bg = "white", height = 8, width = 8)
+ggplot(ul.mrs, aes(x = year, y = MRS, color = Molecule)) + 
+  geom_line(size = 1) +
+  xlab("Time (Week)") + 
   ylab("Mean Rank Shift") +
-  theme_light()
-
+  theme_cowplot() +
+  scale_color_brewer(type = "qual", palette = 6, direction = -1)
+dev.off()
 plot(rankshift.plot)
 
 # Does one plot type show higher or lower MRS, on average?
-group_by(ul.mrs, mol) %>% 
+group_by(ul.mrs, Molecule) %>% 
   summarise(
     mean = mean(MRS),
     cv = sd(MRS)/mean)
