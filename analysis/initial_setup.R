@@ -1,4 +1,4 @@
-rm(list =)
+rm(list = ls())
 #source("bin/mothur_tools.R")
 require(vegan)
 require(reshape2)
@@ -34,6 +34,8 @@ design <- read.csv(file = "data/design.csv")
 
 # Make rel abund matrices and split into active total comms
 OTUs <- OTUs[,-which(colSums(OTUs) < 3)]
+
+OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
 
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
