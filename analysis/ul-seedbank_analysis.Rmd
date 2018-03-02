@@ -24,17 +24,19 @@ require(progress)
 ```{r data format, include=FALSE}
 # Load data
 OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
-OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
+# OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
 design <- read.csv(file = "data/design.csv")
 
 # Make rel abund matrices and split into active total comms
-OTUs <- OTUs[,-which(colSums(OTUs) < 3)]
+OTUs <- OTUs[,-which(colSums(OTUs) < 5)]
 
-OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
+# OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
+# saveRDS(OTUs, file = "data/Rdata/OTUs_rarefied.rda")
+OTUs <- readRDS(file = "data/Rdata/OTUs_rarefied.rda")
 
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
-#OTUs[which(design$sample.type == "DNA"),] <- decostand(OTUs.active, method = "pa") + OTUs.total
+OTUs.total <- decostand(OTUs.active, method = "pa") + OTUs.total
 
 #OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL <- decostand(OTUs, method = "total")
@@ -45,21 +47,6 @@ OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
 env.data$date <- parse_date_time(env.data$date, "m d y")
 design <- left_join(design, env.data[,c("sample.id", "date")])
-# weather.data <- read.csv("data/noaa-climate.csv")
-# weather.bloomington <- weather.data %>% 
-#   filter(NAME == "BLOOMINGTON INDIANA UNIVERSITY, IN US") %>%
-#   select(STATION, DATE, PRCP, SNOW) %>% mutate(Date = as_date(DATE)) %>%
-#   filter(Date > min(env.data$date) & Date < max(env.data$date))
-# 
-# btown.precip <- as.xts(weather.bloomington$PRCP, order.by = weather.bloomington$Date)
-# plot(btown.precip)
-# weekly.precip <- apply.weekly(btown.precip, sum)
-# 
-# plot(weekly.precip)
-# ggplot(, aes(y = PRCP, x = Date)) +
-#   geom_line() + 
-#   ylab("Precipitation")
-# na.approx(coredata(weekly.precip), xout = env.data$date)
 ```
 
 # Characterize Temporal Dynamics (Abundance-based)
@@ -157,11 +144,6 @@ colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
 active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
 total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
-# active.traj.end <- active.traj[-1,]
-# active.traj.start <- active.traj[-123,]
-# active.traj.full <- cbind(active.traj.start, active.traj.end)
-# colnames(active.traj.full) <- c("PC1.start", "PC2.start", "PC1.end", "PC2.end")
-
 active.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
 pdf("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
@@ -175,8 +157,8 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
              color = viridis(2)[2], size = 3) +
   theme_cowplot() + 
-  xlab("PCoA 1") + 
-  ylab("PCoA 2")
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 dev.off()
 
 total.traj.df <- cbind.data.frame(
@@ -192,11 +174,12 @@ full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
              color = magma(2)[2], size = 3) +
   theme_cowplot()+
-  xlab("PCoA 1")+
-  ylab("PCoA 2")
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 dev.off()
 
-
+# Points colored by month
+# Active
 filter(design, sample.type == "RNA") %>% 
   full_join(active.traj.df) %>% 
   mutate(month = month(date, label = T, abbr = T)) %>% 
@@ -207,6 +190,7 @@ filter(design, sample.type == "RNA") %>%
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 
+# total
 filter(design, sample.type == "DNA") %>% 
   full_join(total.traj.df) %>% 
   mutate(month = month(date, label = T, abbr = T)) %>% 
@@ -240,14 +224,26 @@ plot(total.bdisp)
 anova(total.bdisp)
 boxplot(total.bdisp)
 
-matplot(cbind(total.traj[,1], active.traj[,1]), type = 'l', ylab = "PCoA1", xlab = "Week")
-matplot(cbind(total.traj[,2], active.traj[,2]), type = 'l', ylab = "PCoA2", xlab = "Week")
+pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  xlab("") + 
+  theme(legend.direction = "vertical", legend.position = "right")
 
-active.dists <- as.matrix(OTUs.dist)[which(design$sample.type == "RNA"),which(design$sample.type == "RNA")]
-total.dists <- as.matrix(OTUs.dist)[which(design$sample.type == "DNA"),which(design$sample.type == "DNA")]
-plot(design$sample.id[which(design$sample.type == "RNA")], active.dists[,1])
-plot(design$sample.id[which(design$sample.type == "DNA")], total.dists[,1])
-
+pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  xlab("Time (Week)")
+plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
+          pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B"))
+plots %>% ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
 ```
 
 # Ordinations (Presence-absence based)
@@ -288,7 +284,6 @@ colnames(seedbank.traj) <- c("Comp.1", "Comp.2")
 
 seedbank.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], seedbank.traj) 
-pdf("figures/seedbank_trajectory.pdf", bg = "white", height = 8, width = 10)
 filter(design, sample.type == "RNA") %>% 
   full_join(seedbank.traj.df) %>% 
   mutate(month = month(date, label = T, abbr = T)) %>% 
@@ -305,7 +300,6 @@ filter(design, sample.type == "RNA") %>%
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-dev.off()
 
 filter(design, sample.type == "RNA") %>% 
   full_join(seedbank.traj.df) %>% 
@@ -327,14 +321,8 @@ colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
 active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
 total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
-# active.traj.end <- active.traj[-1,]
-# active.traj.start <- active.traj[-123,]
-# active.traj.full <- cbind(active.traj.start, active.traj.end)
-# colnames(active.traj.full) <- c("PC1.start", "PC2.start", "PC1.end", "PC2.end")
-
 active.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
-pdf("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
@@ -345,13 +333,11 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
              color = viridis(2)[2], size = 3) +
   theme_cowplot() + 
-  xlab("PCoA 1") + 
-  ylab("PCoA 2")
-dev.off()
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 
 total.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
-pdf("figures/total_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
@@ -362,9 +348,8 @@ full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
              color = magma(2)[2], size = 3) +
   theme_cowplot()+
-  xlab("PCoA 1")+
-  ylab("PCoA 2")
-dev.off()
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 
 
 filter(design, sample.type == "RNA") %>% 
@@ -387,9 +372,27 @@ filter(design, sample.type == "DNA") %>%
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 
+pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  xlab("") + 
+  theme(legend.direction = "vertical", legend.position = "right")
 
+pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  xlab("Time (Week)")
+plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
+          pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B"))
+plots %>% ggsave(filename = "figures/pcoa_dynamics_presence-absence.pdf", width = 8, height = 8, units = "in", bg = "white")
 ```
-
 
 
 ## organize data structure for codyn
@@ -417,17 +420,22 @@ turn.disappear <- turnover(df = OTUs.long,
                        abundance.var = "abundance",
                        replicate.var = "mol",
                        metric = "disappearance")
+
+# Make figure showing turnover in different subsets
 turn.total %>% mutate(Molecule = mol) %>%
   ggplot(aes(y = total, x = number, color = Molecule))+
-  geom_line() + 
+  geom_point(size = .75, alpha = 0.5) + 
+  geom_smooth() + 
   ylab("Turnover") + 
   xlab("Time (Week)") +
-  scale_color_brewer(type = "qual", palette = 6, direction = -1) +
-  ggsave("figures/turnover-total.pdf", height = 6, width = 6, bg = "white")
+  scale_color_manual("Community Subset", values = c("grey50", "black")) +
+  ggsave("figures/turnover-total.pdf", height = 6, width = 8, bg = "white")
 ggplot(turn.appear, aes(y = appearance, x = number, color = mol))+
-  geom_line()
+  geom_smooth() + 
+  geom_point()
 ggplot(turn.disappear, aes(y = disappearance, x = number, color = mol))+
-  geom_line()
+  geom_smooth() + 
+  geom_point()
 
 dates <- left_join(design[-which(design$sample.id == 1),], env.data) %>% select(date)
 turn.total$Season <- ifelse(month(dates$date) %in% c(5:10), "Summer", "Winter")
@@ -443,7 +451,6 @@ ul.mrs <- rank_shift(df = OTUs.long,
            species.var = "otu",
            abundance.var = "abundance",
            replicate.var = "mol")
-ul.mrs
 
 ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
 names(ul.mrs)[3] <- "Molecule"
@@ -455,7 +462,7 @@ ggplot(ul.mrs, aes(x = year, y = MRS, color = Molecule)) +
   xlab("Time (Week)") + 
   ylab("Mean Rank Shift") +
   theme_cowplot() +
-  scale_color_brewer(type = "qual", palette = 6, direction = -1)
+  scale_color_manual("Community Subset", values = c("grey50", "black"))
 dev.off()
 
 
@@ -469,26 +476,27 @@ group_by(ul.mrs, Molecule, Season) %>%
     cv = sd(MRS)/mean)
 
 
-# Rate change interval
-ul.rci <- rate_change_interval(df = OTUs.long,
-                     time.var = "number",
-                     species.var = "otu", 
-                     abundance.var = "abundance",
-                     replicate.var = "mol")
-
-ul.rci
-rate.plot <- ggplot(ul.rci, aes(interval, distance)) +
-  geom_point() + 
-  facet_wrap(~mol) +
-  theme(strip.text.x = element_text(size = 7)) +
-  stat_smooth(method = "loess", se = F, size = 1) + 
-  ylab("Hellinger Distance") + 
-  xlab("Time Interval (Weeks)") +
-  theme_minimal()
-rate.plot
-
+# # Rate change interval
+# ul.rci <- rate_change_interval(df = OTUs.long,
+#                      time.var = "number",
+#                      species.var = "otu", 
+#                      abundance.var = "abundance",
+#                      replicate.var = "mol")
+# 
+# ul.rci
+# rate.plot <- ggplot(ul.rci, aes(interval, distance)) +
+#   geom_point() + 
+#   facet_wrap(~mol) +
+#   theme(strip.text.x = element_text(size = 7)) +
+#   stat_smooth(method = "loess", se = F, size = 1) + 
+#   ylab("Hellinger Distance") + 
+#   xlab("Time Interval (Weeks)") +
+#   theme_minimal()
+# rate.plot
+```
 
 # Partition nestedness and turnover
+```{r}
 OTUs.pa <- decostand(OTUs.active, method = "pa")
 OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
 OTUs.nest <- OTUs.betapart$beta.sne
@@ -500,21 +508,8 @@ OTUs.traj <- OTUs.pcoa$points
 colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
 active.traj <- OTUs.traj
 
-OTUs.pa <- decostand(OTUs.total, method = "pa")
-OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
-OTUs.nest <- OTUs.betapart$beta.sne
-OTUs.turn <- OTUs.betapart$beta.sim
-OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
-var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-OTUs.traj <- OTUs.pcoa$points
-colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
-total.traj <- OTUs.traj
-
 active.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
-total.traj.df <- cbind.data.frame(
-  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
 filter(design, sample.type == "RNA") %>% 
   full_join(active.traj.df) %>% 
   mutate(month = month(date, label = T, abbr = T)) %>% 
@@ -525,6 +520,19 @@ filter(design, sample.type == "RNA") %>%
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
 
+OTUs.pa <- decostand(OTUs.total, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
+var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+OTUs.traj <- OTUs.pcoa$points
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+total.traj <- OTUs.traj
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+
 filter(design, sample.type == "DNA") %>% 
   full_join(total.traj.df) %>% 
   mutate(month = month(date, label = T, abbr = T)) %>% 
@@ -534,56 +542,6 @@ filter(design, sample.type == "DNA") %>%
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-
-
-## organize data structure for codyn
-OTUs.long <- as.data.frame(seedbank)
-OTUs.long$number <- design$sample.id[which(design$sample.type == "RNA")]
-OTUs.long <- gather(OTUs.long, key = otu, value = abundance, -number)
-
-# Calculate turnover
-turn.total <- turnover(df = OTUs.long, 
-                       time.var = "number",
-                       species.var = "otu",
-                       abundance.var = "abundance")
-turn.appear <- turnover(df = OTUs.long, 
-                        time.var = "number",
-                        species.var = "otu",
-                        abundance.var = "abundance",
-                        metric = "appearance")
-turn.disappear <- turnover(df = OTUs.long, 
-                           time.var = "number",
-                           species.var = "otu",
-                           abundance.var = "abundance",
-                           metric = "disappearance")
-
-ggplot(turn.total, aes(y = total, x = number))+
-  geom_line()
-ggplot(turn.appear, aes(y = appearance, x = number))+
-  geom_line()
-ggplot(turn.disappear, aes(y = disappearance, x = number))+
-  geom_line()
-
-# Mean Rank Shift
-ul.mrs <- rank_shift(df = OTUs.long,
-                     time.var = "number",
-                     species.var = "otu",
-                     abundance.var = "abundance")
-ul.mrs
-
-ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
-names(ul.mrs)[3] <- "Molecule"
-# Create plot
-pdf("figures/mean_rank_shift.pdf", bg = "white", height = 8, width = 8)
-ggplot(ul.mrs, aes(x = year, y = MRS)) + 
-  geom_line(size = 1) +
-  xlab("Time (Week)") + 
-  ylab("Mean Rank Shift") +
-  theme_cowplot() +
-  scale_color_brewer(type = "qual", palette = 6, direction = -1)
-dev.off()
-plot(rankshift.plot)
-
 ```
 
 
