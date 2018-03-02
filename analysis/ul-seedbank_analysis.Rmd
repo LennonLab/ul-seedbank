@@ -548,14 +548,15 @@ filter(design, sample.type == "DNA") %>%
 # calculate frequency dependence
 ```{r}
 calc.neg.freq.dep <- function(sbs){
-  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs))
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
   for(i in 1:(nrow(sbs)-1)){
     y.s[i,] = log(sbs[i+1,] / sbs[i,])
   }
   eq.freq <- vector(length = ncol(y.s))
   fd <- vector(length = ncol(y.s))
+  sbs.rel <- decostand(sbs[-nrow(sbs),], method = "total")
   for(i in 1:ncol(y.s)){
-    mod <- lm(y.s[,i] ~ sbs[,i])
+    mod <- lm(y.s[,i] ~ sbs.rel[,i])
     eq.freq[i] <- -coef(mod)[1] / coef(mod)[2]
     fd[i] <- coef(mod)[2]
   }
@@ -565,12 +566,15 @@ calc.neg.freq.dep <- function(sbs){
   return(na.omit(cbind.data.frame(eq.freq, fd)))
 }
 
+shuffle.ts <- function(species.ts){
+  species.ts[sample(1:length(species.ts))]
+}
+
 get.null.distr <- function(comm, iters = 5000){
   pb <- progress_bar$new(total = iters)
   nfd.cov <- rep(NA, iters)
   for(i in 1:iters){
-    nullcom <- comm[sample(1:nrow(comm)),] # randomize sampling order
-    nullcom <- decostand(nullcom, method = "total")
+    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
     nfd <- calc.neg.freq.dep(nullcom)
     nfd %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd
     nfd.cov[i] <- cov(log(nfd$eq.freq), log(-nfd$fd))
@@ -583,7 +587,7 @@ otu.thresh <- 100
 OTUs.total.nozero <- OTUs.total[,1:otu.thresh] + 10^-10
 OTUs.REL.total.nozero <- decostand(OTUs.total[,1:otu.thresh], method = "total") + 10^-10
 
-nfd.total <- calc.neg.freq.dep(OTUs.REL.total.nozero)
+nfd.total <- calc.neg.freq.dep(OTUs.total.nozero)
 nfd.total %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.total
 nfd.total.cov <- cov(log(nfd.total$eq.freq), log(-nfd.total$fd))
 nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
@@ -596,7 +600,7 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
 OTUs.active.nozero <- OTUs.active[,1:otu.thresh] + 10^-10
 OTUs.REL.active.nozero <- decostand(OTUs.active[,1:otu.thresh], method = "total") + 10^-10
 
-nfd.active <- calc.neg.freq.dep(OTUs.REL.active.nozero)
+nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
 nfd.active %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.active
 nfd.active.cov <- cov(log(nfd.active$eq.freq), log(-nfd.active$fd))
 nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
@@ -608,7 +612,7 @@ nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
 
 OTUs.seedbank.nozero <- seedbank[,1:otu.thresh] + 10^-10
 OTUs.REL.seedbank.nozero <- decostand(seedbank[,1:otu.thresh], method = "total") + 10^-10
-nfd.sb <- calc.neg.freq.dep(OTUs.REL.seedbank.nozero)
+nfd.sb <- calc.neg.freq.dep(OTUs.seedbank.nozero)
 nfd.sb %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.sb
 nfd.sb.cov <- cov(log(nfd.sb$eq.freq), log(-nfd.sb$fd))
 nfd.sb %>% ggplot(aes(x = eq.freq, y = -fd)) +
@@ -619,10 +623,44 @@ nfd.sb %>% ggplot(aes(x = eq.freq, y = -fd)) +
   xlab("Equilibrium Frequency")
 
 
+# Generate null distributions
+tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = 999)
+act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = 999)
+sb.nd <- get.null.distr(comm = OTUs.seedbank.nozero, iters = 999)
 
-tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = 5000)
-act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = 5000)
-sb.nd <- get.null.distr(comm = OTUs.seedbank.nozero, iters = 5000)
+# Compare observed with null
+hist(tot.nd, breaks = 20); abline(v = nfd.total.cov, col = "red")
+tot.nfd.pval <- rank(c(nfd.total.cov, tot.nd))[1] / length(c(nfd.total.cov, tot.nd))
+hist(act.nd, breaks = 20); abline(v = nfd.active.cov, col = "red")
+act.nfd.pval <- rank(c(nfd.active.cov, act.nd))[1] / length(c(nfd.active.cov, act.nd))
+hist(sb.nd, breaks = 20); abline(v = nfd.sb.cov, col = "red")
+sb.nfd.pval <- rank(c(nfd.sb.cov, sb.nd))[1] / length(c(nfd.sb.cov, sb.nd))
+
+# nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
+#                  cbind.data.frame(subset = "Active", nfd = nfd.active.cov),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = nfd.sb.cov)) 
+# 
+# nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
+#                  cbind.data.frame(subset = "Active", nfd = act.nd),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = sb.nd)) 
+
+nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
+                 cbind.data.frame(subset = "Active", nfd = nfd.active.cov)) 
+
+nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
+                 cbind.data.frame(subset = "Active", nfd = act.nd)) 
+
+nfd.nulldists %>% 
+  ggplot(aes(y = nfd, x = subset)) + 
+  geom_jitter(color = "grey", alpha = 0.2) + 
+  geom_violin(alpha = 0.7) + 
+  geom_point(data = nfd.obs, aes(x = subset, y = nfd), 
+             color = "black", size = 5) + 
+  ylab("Negative Frequency Dependence") + 
+  xlab("Community Subset") + 
+  ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 6, units = "in")
+
+
 ```
 
 
