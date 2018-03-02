@@ -97,10 +97,25 @@ richness <- function(M){
 alpha <- function(M){
   apply(M, MARGIN = 1, d)
 }
+
+div <- function(M){
+  diversity(M, index = "invsimpson")
+}
+
 active.rich <- richness(OTUs.REL.active)
-total.rich <- richness(OTUs.REL.sb)
+total.rich <- richness(OTUs.REL.total)
 matplot(cbind(active.rich, total.rich), type = 'l', col = c("red", "black"), lwd = 2, 
         ylab = "Richness", xlab = "Week")
+cbind.data.frame(RNA = active.rich, DNA = total.rich) %>% 
+  rowid_to_column(var = "sample.id") %>% left_join(env.data) %>% select(RNA, DNA, date) %>%
+  gather(Molecule, Richness, -date) %>%
+  ggplot(aes(x = as.Date(date), y = Richness, col = Molecule)) + 
+  geom_line() +
+  xlab("Date") +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) + 
+  scale_x_date(date_breaks = "3 month", date_labels =  "%b %Y") + 
+  scale_color_brewer(type = "qual", palette = 6, direction = -1) +
+  ggsave("figures/richness.pdf", height = 6, width = 6, bg = "white")
 
 active.alpha <- alpha(OTUs.REL.active)
 total.alpha <- alpha(OTUs.REL.sb)
@@ -108,3 +123,19 @@ matplot(cbind(active.alpha, total.alpha), type = 'l', col = c("red", "black"), l
         ylab = "D_alpha", xlab = "Week")
 
 
+weatherdat <- read.csv(file = "data/noaa-climate.csv")
+weatherdat %>% filter(NAME == "BLOOMINGTON INDIANA UNIVERSITY, IN US") %>%
+  mutate(Date = as_date(DATE)) %>% mutate(Week = weeks(Date)) %>%
+  select(Date, PRCP) %>% 
+  ggplot(aes(y = PRCP, x = Date)) + 
+  geom_line()
+
+
+weatherdat %>% filter(NAME == "BLOOMINGTON INDIANA UNIVERSITY, IN US") %>%
+  mutate(Date = as_date(DATE)) %>% select(Date, PRCP) %>% 
+  ggplot(aes(y = PRCP, x = Date)) + 
+  geom_line()
+samplingdates <- as_date(env.data$date)
+weatherdates <- weatherdates$Date
+weatherdat.subset <- weatherdat[which(weatherdates %in% samplingdates),]
+weatherdat.subset %>% select(Date,)
