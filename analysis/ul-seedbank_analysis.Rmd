@@ -1,0 +1,706 @@
+---
+title: "University Lake Microbial Seed Bank"
+author: "Nathan Wisnoski, Jay Lennon"
+date: "1/19/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load packages
+
+rm(list = ls())
+require(vegan)
+require(reshape2)
+require(tidyverse)
+require(lubridate)
+require(codyn)
+require(viridis)
+require(betapart)
+require(cowplot)
+require(xts)
+require(progress)
+```
+
+```{r data format, include=FALSE}
+# Load data
+OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
+# OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
+design <- read.csv(file = "data/design.csv")
+
+# Make rel abund matrices and split into active total comms
+OTUs <- OTUs[,-which(colSums(OTUs) < 5)]
+
+# OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
+# saveRDS(OTUs, file = "data/Rdata/OTUs_rarefied.rda")
+OTUs <- readRDS(file = "data/Rdata/OTUs_rarefied.rda")
+
+OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
+OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
+OTUs.total <- decostand(OTUs.active, method = "pa") + OTUs.total
+
+#OTUs.REL <- decostand(OTUs, method = "hellinger")
+OTUs.REL <- decostand(OTUs, method = "total")
+OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
+OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
+
+# read in environmental data
+env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
+env.data$date <- parse_date_time(env.data$date, "m d y")
+design <- left_join(design, env.data[,c("sample.id", "date")])
+```
+
+# Characterize Temporal Dynamics (Abundance-based)
+```{r}
+# never active
+transients <- OTUs.REL.total[,which(colSums(OTUs.REL.active) == 0)]
+transients.dist <- vegdist(transients, method = "bray")
+transients.pcoa <- cmdscale(transients.dist, eig = T)
+var1 <- round(eigenvals(transients.pcoa)[1] / sum(eigenvals(transients.pcoa)), 3) * 100
+var2 <- round(eigenvals(transients.pcoa)[2] / sum(eigenvals(transients.pcoa)), 3) * 100
+transients.traj <- transients.pcoa$points
+colnames(transients.traj) <- c("Comp.1", "Comp.2")
+transients.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], transients.traj) 
+
+
+filter(design, sample.type == "RNA") %>% 
+  full_join(transients.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+
+# present, but not active
+seedbank <- OTUs.REL.active == 0 & OTUs.REL.total != 0
+seedbank <- seedbank * OTUs.REL.total
+seedbank <- seedbank[,which(colSums(seedbank) > 0)]
+
+seedbank.dist <- vegdist(seedbank, method = "bray")
+seedbank.pcoa <- cmdscale(seedbank.dist, eig = T)
+var1 <- round(eigenvals(seedbank.pcoa)[1] / sum(eigenvals(seedbank.pcoa)), 3) * 100
+var2 <- round(eigenvals(seedbank.pcoa)[2] / sum(eigenvals(seedbank.pcoa)), 3) * 100
+seedbank.traj <- seedbank.pcoa$points
+colnames(seedbank.traj) <- c("Comp.1", "Comp.2")
+
+png(filename = "figures/seedbank-dynamics.png", height = 8, width = 6, units = 'in', res = 300)
+par(mfrow = c(3,1), mar = c(3,5,1,1), oma = c(2,2,2,2))
+plot(env.data$sample.id, env.data$temp, type = 'l', ylab = "Temperature (C)", xaxt = "n", xlab = "", cex.lab = 1.3)
+plot(rowSums(seedbank > 0), type = 'l', xaxt = "n", ylab = "Seedbank Richness", xlab = "", cex.lab = 1.3)
+plot(seedbank.traj[,1], type = 'l', ylab = "Seedbank PC1", cex.lab = 1.3)
+mtext("Time (Week)", side = 1, line = 3)
+dev.off()
+
+seedbank.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], seedbank.traj) 
+pdf("figures/seedbank_trajectory.pdf", bg = "white", height = 8, width = 10)
+filter(design, sample.type == "RNA") %>% 
+  full_join(seedbank.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_viridis(discrete = T, "Month") + 
+  geom_point(aes(x = seedbank.traj.df$Comp.1[1], 
+                 y = seedbank.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = seedbank.traj.df$Comp.1[123], 
+                 y = seedbank.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+dev.off()
+
+filter(design, sample.type == "RNA") %>% 
+  full_join(seedbank.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+seedbank.groups <- filter(design, sample.type == "RNA") %>% 
+  full_join(seedbank.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  select(month)
+seedbank.groups <- factor(seedbank.groups$month)
+sb.bdisp <- betadisper(seedbank.dist, group = seedbank.groups)
+plot(sb.bdisp)
+anova(sb.bdisp)
+boxplot(sb.bdisp)
+
+OTUs.dist <- vegdist(OTUs.REL, method = "bray")
+OTUs.pcoa <- cmdscale(OTUs.dist, eig = T)
+var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+OTUs.traj <- OTUs.pcoa$points
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
+total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
+
+active.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+pdf("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
+full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                  ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(125), "Sample Number") + 
+  geom_point(aes(x = active.traj.df$Comp.1[1], y = active.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+dev.off()
+
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+pdf("figures/total_trajectory.pdf", bg = "white", height = 8, width = 10)
+full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = magma(125)) + 
+  geom_point(aes(x = total.traj.df$Comp.1[1], y = total.traj.df$Comp.2[1]),
+             color = magma(2)[1], size = 3) +
+  geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
+             color = magma(2)[2], size = 3) +
+  theme_cowplot()+
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+dev.off()
+
+# Points colored by month
+# Active
+filter(design, sample.type == "RNA") %>% 
+  full_join(active.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+# total
+filter(design, sample.type == "DNA") %>% 
+  full_join(total.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+active.groups <- filter(design, sample.type == "RNA") %>% 
+  full_join(active.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  select(month)
+active.groups <- factor(active.groups$month)
+active.dist <- vegdist(OTUs.REL.active, method = "bray")
+active.bdisp <- betadisper(active.dist, group = active.groups)
+plot(active.bdisp)
+anova(active.bdisp)
+boxplot(active.bdisp)
+
+
+total.groups <- filter(design, sample.type == "RNA") %>% 
+  full_join(total.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  select(month)
+total.groups <- factor(total.groups$month)
+total.dist <- vegdist(OTUs.REL.total, method = "bray")
+total.bdisp <- betadisper(total.dist, group = total.groups)
+plot(total.bdisp)
+anova(total.bdisp)
+boxplot(total.bdisp)
+
+pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  xlab("") + 
+  theme(legend.direction = "vertical", legend.position = "right")
+
+pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  xlab("Time (Week)")
+plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
+          pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B"))
+plots %>% ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
+```
+
+# Ordinations (Presence-absence based)
+```{r}
+# never active
+transients <- OTUs.REL.total[,which(colSums(OTUs.REL.active) == 0)]
+transients.dist <- vegdist(transients, method = "bray", binary = T)
+transients.pcoa <- cmdscale(transients.dist, eig = T)
+var1 <- round(eigenvals(transients.pcoa)[1] / sum(eigenvals(transients.pcoa)), 3) * 100
+var2 <- round(eigenvals(transients.pcoa)[2] / sum(eigenvals(transients.pcoa)), 3) * 100
+transients.traj <- transients.pcoa$points
+colnames(transients.traj) <- c("Comp.1", "Comp.2")
+transients.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], transients.traj) 
+
+filter(design, sample.type == "RNA") %>% 
+  full_join(transients.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+
+# present, but not active
+seedbank <- OTUs.REL.active == 0 & OTUs.REL.total != 0
+seedbank <- seedbank * OTUs.REL.total
+seedbank <- seedbank[,which(colSums(seedbank) > 0)]
+
+seedbank.dist <- vegdist(seedbank, method = "bray", binary = T)
+seedbank.pcoa <- cmdscale(seedbank.dist, eig = T)
+var1 <- round(eigenvals(seedbank.pcoa)[1] / sum(eigenvals(seedbank.pcoa)), 3) * 100
+var2 <- round(eigenvals(seedbank.pcoa)[2] / sum(eigenvals(seedbank.pcoa)), 3) * 100
+seedbank.traj <- seedbank.pcoa$points
+colnames(seedbank.traj) <- c("Comp.1", "Comp.2")
+
+seedbank.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], seedbank.traj) 
+filter(design, sample.type == "RNA") %>% 
+  full_join(seedbank.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_viridis(discrete = T, "Month") + 
+  geom_point(aes(x = seedbank.traj.df$Comp.1[1], 
+                 y = seedbank.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = seedbank.traj.df$Comp.1[123], 
+                 y = seedbank.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+filter(design, sample.type == "RNA") %>% 
+  full_join(seedbank.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+
+OTUs.dist <- vegdist(OTUs.REL, method = "bray", binary = T)
+OTUs.pcoa <- cmdscale(OTUs.dist, eig = T)
+var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+OTUs.traj <- OTUs.pcoa$points
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
+total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
+
+active.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                  ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = viridis(125), "Sample Number") + 
+  geom_point(aes(x = active.traj.df$Comp.1[1], y = active.traj.df$Comp.2[1]),
+             color = viridis(2)[1], size = 3) +
+  geom_point(aes(x = active.traj.df$Comp.1[123], y = active.traj.df$Comp.2[123]),
+             color = viridis(2)[2], size = 3) +
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
+  ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
+  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+                          ends = "last", type = "closed")) + 
+  scale_color_gradientn(colors = magma(125)) + 
+  geom_point(aes(x = total.traj.df$Comp.1[1], y = total.traj.df$Comp.2[1]),
+             color = magma(2)[1], size = 3) +
+  geom_point(aes(x = total.traj.df$Comp.1[123], y = total.traj.df$Comp.2[123]),
+             color = magma(2)[2], size = 3) +
+  theme_cowplot()+
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+
+filter(design, sample.type == "RNA") %>% 
+  full_join(active.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+filter(design, sample.type == "DNA") %>% 
+  full_join(total.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  xlab("") + 
+  theme(legend.direction = "vertical", legend.position = "right")
+
+pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
+                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
+  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+  geom_line(size = 0.75) + 
+  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  xlab("Time (Week)")
+plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
+          pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B"))
+plots %>% ggsave(filename = "figures/pcoa_dynamics_presence-absence.pdf", width = 8, height = 8, units = "in", bg = "white")
+```
+
+
+## organize data structure for codyn
+```{r}
+OTUs.long <- as.data.frame(OTUs.REL)
+OTUs.long$mol <- design$sample.type
+OTUs.long$number <- design$sample.id
+OTUs.long <- gather(OTUs.long, key = otu, value = abundance, -mol, -number)
+
+# Calculate turnover
+turn.total <- turnover(df = OTUs.long, 
+                 time.var = "number",
+                 species.var = "otu",
+                 abundance.var = "abundance",
+                 replicate.var = "mol")
+turn.appear <- turnover(df = OTUs.long, 
+                       time.var = "number",
+                       species.var = "otu",
+                       abundance.var = "abundance",
+                       replicate.var = "mol",
+                       metric = "appearance")
+turn.disappear <- turnover(df = OTUs.long, 
+                       time.var = "number",
+                       species.var = "otu",
+                       abundance.var = "abundance",
+                       replicate.var = "mol",
+                       metric = "disappearance")
+
+# Make figure showing turnover in different subsets
+turn.total %>% mutate(Molecule = mol) %>%
+  ggplot(aes(y = total, x = number, color = Molecule))+
+  geom_point(size = .75, alpha = 0.5) + 
+  geom_smooth() + 
+  ylab("Turnover") + 
+  xlab("Time (Week)") +
+  scale_color_manual("Community Subset", values = c("grey50", "black")) +
+  ggsave("figures/turnover-total.pdf", height = 6, width = 8, bg = "white")
+ggplot(turn.appear, aes(y = appearance, x = number, color = mol))+
+  geom_smooth() + 
+  geom_point()
+ggplot(turn.disappear, aes(y = disappearance, x = number, color = mol))+
+  geom_smooth() + 
+  geom_point()
+
+dates <- left_join(design[-which(design$sample.id == 1),], env.data) %>% select(date)
+turn.total$Season <- ifelse(month(dates$date) %in% c(5:10), "Summer", "Winter")
+group_by(turn.total, mol, Season) %>% 
+  summarise(
+    mean = mean(total),
+    cv = sd(total)/mean)
+
+turn.total %>% group_by(mol) %>% summarize(avg.turn = mean(total))
+# Mean Rank Shift
+ul.mrs <- rank_shift(df = OTUs.long,
+           time.var = "number",
+           species.var = "otu",
+           abundance.var = "abundance",
+           replicate.var = "mol")
+
+ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
+names(ul.mrs)[3] <- "Molecule"
+
+# Create plot
+pdf("figures/mean_rank_shift.pdf", bg = "white", height = 8, width = 8)
+ggplot(ul.mrs, aes(x = year, y = MRS, color = Molecule)) + 
+  geom_line(size = 1) +
+  xlab("Time (Week)") + 
+  ylab("Mean Rank Shift") +
+  theme_cowplot() +
+  scale_color_manual("Community Subset", values = c("grey50", "black"))
+dev.off()
+
+
+# Does one plot type show higher or lower MRS, on average?
+dates <- left_join(design[-which(design$sample.id == 1),], env.data) %>% select(date)
+
+ul.mrs$Season <- ifelse(month(dates$date) %in% c(5:10), "Summer", "Winter")
+group_by(ul.mrs, Molecule, Season) %>% 
+  summarise(
+    mean = mean(MRS),
+    cv = sd(MRS)/mean)
+
+
+# # Rate change interval
+# ul.rci <- rate_change_interval(df = OTUs.long,
+#                      time.var = "number",
+#                      species.var = "otu", 
+#                      abundance.var = "abundance",
+#                      replicate.var = "mol")
+# 
+# ul.rci
+# rate.plot <- ggplot(ul.rci, aes(interval, distance)) +
+#   geom_point() + 
+#   facet_wrap(~mol) +
+#   theme(strip.text.x = element_text(size = 7)) +
+#   stat_smooth(method = "loess", se = F, size = 1) + 
+#   ylab("Hellinger Distance") + 
+#   xlab("Time Interval (Weeks)") +
+#   theme_minimal()
+# rate.plot
+```
+
+# Partition nestedness and turnover
+```{r}
+OTUs.pa <- decostand(OTUs.active, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
+var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+OTUs.traj <- OTUs.pcoa$points
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+active.traj <- OTUs.traj
+
+active.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+filter(design, sample.type == "RNA") %>% 
+  full_join(active.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+
+OTUs.pa <- decostand(OTUs.total, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
+var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
+OTUs.traj <- OTUs.pcoa$points
+colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+total.traj <- OTUs.traj
+total.traj.df <- cbind.data.frame(
+  sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
+
+filter(design, sample.type == "DNA") %>% 
+  full_join(total.traj.df) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>% 
+  ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
+  geom_point() + 
+  scale_color_viridis(discrete = T, "Month") + 
+  theme_cowplot() + 
+  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+```
+
+
+# calculate frequency dependence
+```{r}
+calc.neg.freq.dep <- function(sbs){
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = log(sbs[i+1,] / sbs[i,])
+  }
+  eq.freq <- vector(length = ncol(y.s))
+  fd <- vector(length = ncol(y.s))
+  sbs.rel <- decostand(sbs[-nrow(sbs),], method = "total")
+  for(i in 1:ncol(y.s)){
+    mod <- lm(y.s[,i] ~ sbs.rel[,i])
+    eq.freq[i] <- -coef(mod)[1] / coef(mod)[2]
+    fd[i] <- coef(mod)[2]
+  }
+  # plot(log10(eq.freq), log10(-fd), 
+  #      ylab = "log10 Negative Freq. Dependence",
+  #      xlab = "log10 Equilibrium Frequency")
+  return(na.omit(cbind.data.frame(eq.freq, fd)))
+}
+
+shuffle.ts <- function(species.ts){
+  species.ts[sample(1:length(species.ts))]
+}
+
+get.null.distr <- function(comm, iters = 5000){
+  pb <- progress_bar$new(total = iters)
+  nfd.cov <- rep(NA, iters)
+  for(i in 1:iters){
+    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+    nfd <- calc.neg.freq.dep(nullcom)
+    nfd %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd
+    nfd.cov[i] <- cov(log(nfd$eq.freq), log(-nfd$fd))
+    pb$tick()
+  }
+  return(nfd.cov)
+}
+
+otu.thresh <- 100
+OTUs.total.nozero <- OTUs.total[,1:otu.thresh] + 10^-10
+OTUs.REL.total.nozero <- decostand(OTUs.total[,1:otu.thresh], method = "total") + 10^-10
+
+nfd.total <- calc.neg.freq.dep(OTUs.total.nozero)
+nfd.total %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.total
+nfd.total.cov <- cov(log(nfd.total$eq.freq), log(-nfd.total$fd))
+nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point() + 
+  scale_y_log10() + 
+  scale_x_log10() +
+  ylab("Negative Frequency Dependence") + 
+  xlab("Equilibrium Frequency")
+
+OTUs.active.nozero <- OTUs.active[,1:otu.thresh] + 10^-10
+OTUs.REL.active.nozero <- decostand(OTUs.active[,1:otu.thresh], method = "total") + 10^-10
+
+nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
+nfd.active %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.active
+nfd.active.cov <- cov(log(nfd.active$eq.freq), log(-nfd.active$fd))
+nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point() + 
+  scale_y_log10() + 
+  scale_x_log10() +
+  ylab("Negative Frequency Dependence") + 
+  xlab("Equilibrium Frequency")
+
+OTUs.seedbank.nozero <- seedbank[,1:otu.thresh] + 10^-10
+OTUs.REL.seedbank.nozero <- decostand(seedbank[,1:otu.thresh], method = "total") + 10^-10
+nfd.sb <- calc.neg.freq.dep(OTUs.seedbank.nozero)
+nfd.sb %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.sb
+nfd.sb.cov <- cov(log(nfd.sb$eq.freq), log(-nfd.sb$fd))
+nfd.sb %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point() + 
+  scale_y_log10() + 
+  scale_x_log10() +
+  ylab("Negative Frequency Dependence") + 
+  xlab("Equilibrium Frequency")
+
+
+# Generate null distributions
+tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = 999)
+act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = 999)
+sb.nd <- get.null.distr(comm = OTUs.seedbank.nozero, iters = 999)
+
+# Compare observed with null
+hist(tot.nd, breaks = 20); abline(v = nfd.total.cov, col = "red")
+tot.nfd.pval <- rank(c(nfd.total.cov, tot.nd))[1] / length(c(nfd.total.cov, tot.nd))
+hist(act.nd, breaks = 20); abline(v = nfd.active.cov, col = "red")
+act.nfd.pval <- rank(c(nfd.active.cov, act.nd))[1] / length(c(nfd.active.cov, act.nd))
+hist(sb.nd, breaks = 20); abline(v = nfd.sb.cov, col = "red")
+sb.nfd.pval <- rank(c(nfd.sb.cov, sb.nd))[1] / length(c(nfd.sb.cov, sb.nd))
+
+# nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
+#                  cbind.data.frame(subset = "Active", nfd = nfd.active.cov),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = nfd.sb.cov)) 
+# 
+# nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
+#                  cbind.data.frame(subset = "Active", nfd = act.nd),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = sb.nd)) 
+
+nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
+                 cbind.data.frame(subset = "Active", nfd = nfd.active.cov)) 
+
+nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
+                 cbind.data.frame(subset = "Active", nfd = act.nd)) 
+
+nfd.nulldists %>% 
+  ggplot(aes(y = nfd, x = subset)) + 
+  geom_jitter(color = "grey", alpha = 0.2) + 
+  geom_violin(alpha = 0.7) + 
+  geom_point(data = nfd.obs, aes(x = subset, y = nfd), 
+             color = "black", size = 5) + 
+  ylab("Negative Frequency Dependence") + 
+  xlab("Community Subset") + 
+  ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 6, units = "in")
+
+
+```
+
+
+```{r}
+# Calculate a species 
+
+reappearance.score <- function(DNA, RNA){
+  otu.diff <- decostand((DNA + RNA), method = "pa") - decostand(RNA, method = "pa")
+  return(colSums(otu.diff))
+}
+
+reappearance.score <- function(DNA, RNA){
+  
+  otu.diff <- decostand((DNA + RNA), method = "pa") - 
+    decostand(RNA, method = "pa")
+  otuscores <- vector(length = ncol(otu.diff))
+  
+  for(j in 1:ncol(otu.diff)){
+    otuscore <- 0
+    for(i in 1:(nrow(otu.diff)-1)){
+      if(length(unique(otu.diff[c(i,i+1), j])) > 1){
+        otuscore <- otuscore + 1
+      }
+    }
+    otuscores[j] <- otuscore
+    print(paste("completed otu #", j))
+  }
+  
+  return(otuscores)
+}
+
+otu.reap <- reappearance.score(DNA = OTUs.total, RNA = OTUs.active)
+otu.pres <- colSums(decostand((OTUs.total + OTUs.active), method = "pa"))
+plot(otu.pres, otu.reap, ylab = "# of times present in seed bank but not active",
+     xlab = "# of times present in lake")
+abline(1, 1)
+cbind.data.frame(reappearances = otu.reap, presences = otu.pres) %>%
+  ggplot(aes(y = reappearances, x = presences)) + 
+  geom_point(alpha = 0.1) + 
+  ylab("Metabolic State Switches") +
+  xlab("Presences in Total Community")
+
+```
