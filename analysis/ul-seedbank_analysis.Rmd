@@ -677,7 +677,7 @@ nfd.summary <- nfd.nulldists %>%
 nfd.summary
 ```
 
-
+# Reappeareance Scores
 ```{r}
 # Calculate a species 
 
@@ -738,4 +738,59 @@ cbind.data.frame(times_inactive = otu.reap, presences = otu.pres) %>%
          incidence = presences / (length(env.data$date) - 1)) %>% 
   filter(incidence > 0.5, prop_inactive > 0.5) -> seedbank.taxa
 subset(OTUs.tax, OTU %in% seedbank.taxa$OTU)
+```
+
+# Taxa Time Relationship
+```{r}
+ttr.calc <- function(comm){
+  comm.pa <- decostand(comm, method = 'pa')
+  weeknum <- 1:nrow(comm.pa)
+  otusum <- numeric(nrow(comm.pa))
+  for(week in weeknum){
+    otusum[week] <- ifelse(week > 1, sum(colSums(comm.pa[1:week,]) > 0), 
+                           sum(comm.pa[1,]))
+  }
+  return(cbind.data.frame(week = weeknum, taxa = otusum))
+}
+
+active.ttr <- ttr.calc(OTUs.active)
+total.ttr <- ttr.calc(OTUs.total)
+transient.ttr <- ttr.calc(transients)
+
+ttrs <- rbind.data.frame(cbind.data.frame(subset = "active", active.ttr),
+                 cbind.data.frame(subset = "total", total.ttr),
+                 cbind.data.frame(subset = "transients", transient.ttr))
+ttrs %>% 
+  ggplot(aes(x = week, y = taxa, color = subset)) + 
+  geom_line(size = 2)
+```
+
+# Conditionally Rare Taxa
+```{r}
+identifyCRT <- function(spec.dyn){
+  n <- length(spec.dyn)
+  skew.numer <- sum((spec.dyn - mean(spec.dyn))^3)/n
+  skew.denom <- (sum((spec.dyn - mean(spec.dyn))^2)/n)^(3/2)
+  kurt.num <- sum((spec.dyn - mean(spec.dyn))^4)/n
+  kurt.denom <- (sum((spec.dyn - mean(spec.dyn))^2)/n)^2
+  skewness <- skew.numer / skew.denom
+  kurtosis <- kurt.num / kurt.denom
+  b <- (1 + skewness^2) / (kurtosis + 3)
+  return(b)
+ }
+
+activeCRTs <- apply(X = OTUs.REL.active, MARGIN = 2, FUN = identifyCRT)
+totalCRTs <- apply(X = OTUs.REL.total, MARGIN = 2, FUN = identifyCRT)
+hist(activeCRTs)
+hist(totalCRTs)
+boxplot(activeCRTs - totalCRTs)
+
+
+candidateCRTs <- names(activeCRTs[which(activeCRTs > 0.9)])
+candidateCRTs <- OTUs.REL.active[,candidateCRTs]
+candidateCRTs <- candidateCRTs[,apply(candidateCRTs, 2, max) > 0.01]
+matplot(candidateCRTs, type = 'l')
+subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
+
+
 ```
