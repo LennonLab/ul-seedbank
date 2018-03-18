@@ -725,10 +725,7 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter
   
   # decide how many values of cutoffs to test
   max.taxa <- floor(seq(5, min(max.taxa, ncol(OTUs.persistent)), length.out = num.seq))
-  output <- data.frame(taxa = max.taxa, 
-             p = numeric(length(max.taxa)), 
-             ses = numeric(length(max.taxa)),
-             strength = numeric(length(max.taxa)))
+  output <- data.frame(taxa = max.taxa)
   
   # loop through different otu thresholds
   for(i in 1:length(max.taxa)){
@@ -759,23 +756,29 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter
     output[i,"ses"] <- nfd.ses
     output[i,"strength"] <- cov.strength
     output[i,"stderr"] <- se
+    output[i,"mean"] <- mean(nd)
+    output[i,"nfdcov"] <- nfd.cov
   }
   
   return(output)
 }
 
 
-active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 10, num.iter = 999, max.taxa = 100)
-plot(strength ~ taxa, active.nfd.response)
-plot(p ~ taxa, active.nfd.response)
+# active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 30, num.iter = 999, max.taxa = 100)
+# total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 30, num.iter = 999, max.taxa = 100)
+# saveRDS(active.nfd.response, file = "analysis/temp-results/nfd_response_active.rda")
+# saveRDS(total.nfd.response, file = "analysis/temp-results/nfd_response_total.rda")
+active.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_active.rda")
+total.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_total.rda")
 
-total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 5, num.iter = 100, max.taxa = 100)
-plot(strength ~ taxa, total.nfd.response)
-plot(p ~ taxa, total.nfd.response)
-
-ncol(OTUs.total.nozero)
-taxavec <- c(3,5,8, 10, 20, 25)
-total.nfd.response <- nfd.response(OTUs = OTUs.total, max.taxa = taxavec, num.iter = 999)
+nfd.response.df <- rbind.data.frame(
+  cbind.data.frame(subset = "active", active.nfd.response),
+  cbind.data.frame(subset = "total", total.nfd.response))
+nfd.response.df %>% 
+  filter(p < 0.05) %>% 
+  ggplot(aes(x = taxa, y = strength, color = subset)) +
+  geom_point() +
+  geom_smooth()
 ```
 
 # Reappeareance Scores
@@ -892,6 +895,20 @@ candidateCRTs <- OTUs.REL.active[,candidateCRTs]
 candidateCRTs <- candidateCRTs[,apply(candidateCRTs, 2, max) > 0.01]
 matplot(candidateCRTs, type = 'l')
 subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
+
+
+```
+
+```{r}
+library(glmnet)
+library(igraph)
+library(gridExtra)
+
+subset.active <- OTUs.active[,which(colMeans(OTUs.active) > 6)]
+subset.total <- OTUs.active[,which(colMeans(OTUs.total) > 6)]
+
+subset.active.t <- subset.active[-nrow(subset.active),]
+subset.active.t1 <- subset.active[-1,]
 
 
 ```
