@@ -591,7 +591,7 @@ OTUs.total.persistent <- OTUs.ranked[,which(
 OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
-(otu.thresh <- min(5, ncol(OTUs.total.persistent)))
+(otu.thresh <- min(25, ncol(OTUs.total.persistent)))
 
 OTUs.total.nozero <- OTUs.total.persistent[,1:otu.thresh] + 10^-10
 OTUs.REL.total.nozero <- decostand(OTUs.total[,1:otu.thresh], method = "total") + 10^-10
@@ -603,6 +603,7 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point() + 
   scale_y_log10() + 
   scale_x_log10() +
+  geom_smooth(method = "lm") + 
   ylab("Negative Frequency Dependence") + 
   xlab("Equilibrium Frequency")
 
@@ -616,6 +617,7 @@ nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point() + 
   scale_y_log10() + 
   scale_x_log10() +
+  geom_smooth(method = "lm") + 
   ylab("Negative Frequency Dependence") + 
   xlab("Equilibrium Frequency")
 
@@ -675,6 +677,72 @@ nfd.summary <- nfd.nulldists %>%
   group_by(subset) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>% 
   left_join(nfd.obs) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd)
 nfd.summary
+```
+
+```{r}
+# What is the effect of taxa number on response
+nfd.response <- function(OTUs = NULL, OTUs.active = NULL, max.taxa = 10, num.iter = 999, plotit = F, incidence.freq = 0.5){
+  
+  # separate OTUs present across the whole time series
+  OTUs.ranked <- OTUs[,names(sort(colSums(OTUs), decreasing = T))]
+  OTUs.persistent <- OTUs.ranked[,which(
+    colSums(decostand(OTUs.ranked, method = "pa")) >= incidence.freq * nrow(OTUs.ranked))]
+  
+  # If we're looking at Active OTUs, make the switch here
+  if(!is.null(OTUs.active)){
+    if(is.null(OTUs)) print("please supply total otu table")
+    OTUs.persistent <- OTUs.active[,colnames(OTUs.persistent)]
+  }
+  
+  # decide how many values of cutoffs to test
+  max.taxa <- floor(seq(5, ncol(OTUs.persistent), length.out = max.taxa))
+  output <- data.frame(taxa = max.taxa, 
+             p = numeric(length(max.taxa)), 
+             ses = numeric(length(max.taxa)),
+             strength = numeric(length(max.taxa)))
+  
+  # loop through different otu thresholds
+  for(i in 1:length(max.taxa)){
+    if(max.taxa[i] > ncol(OTUs.persistent)) return(output)
+    otu.thresh <- min(max.taxa[i], ncol(OTUs.persistent))
+    OTUs.nozero <- OTUs.persistent[,1:otu.thresh] + 10^-10
+    nfd <- calc.neg.freq.dep(OTUs.nozero)
+    nfd <- nfd %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0)
+    nfd.cov <- cov(log(nfd$eq.freq), log(-nfd$fd))
+    
+    if(plotit){
+      nfd %>% 
+        ggplot(aes(x = eq.freq, y = -fd)) +
+        geom_point() + 
+        scale_y_log10() + 
+        scale_x_log10() +
+        geom_smooth(method = "lm") + 
+        ylab("Negative Frequency Dependence") + 
+        xlab("Equilibrium Frequency")
+    }
+    
+    nd <- get.null.distr(comm = OTUs.nozero, iters = num.iter)
+    nfd.ses <- (nfd.cov - mean(nd)/sd(nd))
+    nfd.pval <- rank(c(nfd.cov, nd))[1] / length(c(nfd.cov, nd))
+    cov.strength <- nfd.cov / mean(nd)
+    se <- sd(nd)/sqrt(num.iter)
+    output[i,"p"] <- nfd.pval
+    output[i,"ses"] <- nfd.ses
+    output[i,"strength"] <- cov.strength
+    output[i,"stderr"] <- se
+  }
+  
+  return(output)
+}
+
+
+active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, max.taxa = 5, num.iter = 100)
+plot(strength ~ taxa, active.nfd.response)
+plot(p ~ taxa, active.nfd.response)
+
+ncol(OTUs.total.nozero)
+taxavec <- c(3,5,8, 10, 20, 25)
+total.nfd.response <- nfd.response(OTUs = OTUs.total, max.taxa = taxavec, num.iter = 999)
 ```
 
 # Reappeareance Scores
