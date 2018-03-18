@@ -71,7 +71,8 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  coord_fixed()
 
 
 # present, but not active
@@ -96,10 +97,9 @@ dev.off()
 
 seedbank.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], seedbank.traj) 
-pdf("figures/seedbank_trajectory.pdf", bg = "white", height = 8, width = 10)
 filter(design, sample.type == "RNA") %>% 
   full_join(seedbank.traj.df) %>% 
-  mutate(month = month(date, label = T, abbr = T)) %>% 
+  mutate(month = month(date, label = T, abbr = T)) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                           ends = "last", type = "closed")) + 
@@ -112,8 +112,9 @@ filter(design, sample.type == "RNA") %>%
              color = viridis(2)[2], size = 3) +
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-dev.off()
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  coord_fixed() +
+  ggsave("figures/seedbank_trajectory.pdf", bg = "white", height = 8, width = 10)
 
 filter(design, sample.type == "RNA") %>% 
   full_join(seedbank.traj.df) %>% 
@@ -123,17 +124,21 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/seedbank_pcoa.pdf", bg = "white", height = 8, width = 10)
 
-seedbank.groups <- filter(design, sample.type == "RNA") %>% 
-  full_join(seedbank.traj.df) %>% 
-  mutate(month = month(date, label = T, abbr = T)) %>% 
-  select(month)
-seedbank.groups <- factor(seedbank.groups$month)
-sb.bdisp <- betadisper(seedbank.dist, group = seedbank.groups)
-plot(sb.bdisp)
-anova(sb.bdisp)
-boxplot(sb.bdisp)
+
+# seedbank.groups <- filter(design, sample.type == "RNA") %>% 
+#   full_join(seedbank.traj.df) %>% 
+#   mutate(month = month(date, label = T, abbr = T)) %>% 
+#   select(month)
+# seedbank.groups <- factor(seedbank.groups$month)
+# sb.bdisp <- betadisper(seedbank.dist, group = seedbank.groups)
+# plot(sb.bdisp)
+# anova(sb.bdisp)
+# boxplot(sb.bdisp)
 
 OTUs.dist <- vegdist(OTUs.REL, method = "bray")
 OTUs.pcoa <- cmdscale(OTUs.dist, eig = T)
@@ -146,7 +151,6 @@ total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
 active.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
-pdf("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
@@ -158,12 +162,12 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
              color = viridis(2)[2], size = 3) +
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-dev.off()
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  coord_fixed() +
+  ggsave("figures/active_trajectory.pdf", bg = "white", height = 8, width = 10)
 
 total.traj.df <- cbind.data.frame(
   sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
-pdf("figures/total_trajectory.pdf", bg = "white", height = 8, width = 10)
 full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
   ggplot(aes(x = Comp.1, y = Comp.2, color = sample.id)) + 
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
@@ -175,8 +179,10 @@ full_join(design[which(design$sample.type == "DNA"),], total.traj.df) %>%
              color = magma(2)[2], size = 3) +
   theme_cowplot()+
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-dev.off()
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  coord_fixed() +
+  ggsave("figures/total_trajectory.pdf", bg = "white", height = 8, width = 10)
+
 
 # Points colored by month
 # Active
@@ -188,7 +194,10 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/active_pcoa.pdf", bg = "white", height = 8, width = 10)
 
 # total
 filter(design, sample.type == "DNA") %>% 
@@ -199,30 +208,34 @@ filter(design, sample.type == "DNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-
-active.groups <- filter(design, sample.type == "RNA") %>% 
-  full_join(active.traj.df) %>% 
-  mutate(month = month(date, label = T, abbr = T)) %>% 
-  select(month)
-active.groups <- factor(active.groups$month)
-active.dist <- vegdist(OTUs.REL.active, method = "bray")
-active.bdisp <- betadisper(active.dist, group = active.groups)
-plot(active.bdisp)
-anova(active.bdisp)
-boxplot(active.bdisp)
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/total_pcoa.pdf", bg = "white", height = 8, width = 10)
 
 
-total.groups <- filter(design, sample.type == "RNA") %>% 
-  full_join(total.traj.df) %>% 
-  mutate(month = month(date, label = T, abbr = T)) %>% 
-  select(month)
-total.groups <- factor(total.groups$month)
-total.dist <- vegdist(OTUs.REL.total, method = "bray")
-total.bdisp <- betadisper(total.dist, group = total.groups)
-plot(total.bdisp)
-anova(total.bdisp)
-boxplot(total.bdisp)
+# active.groups <- filter(design, sample.type == "RNA") %>% 
+#   full_join(active.traj.df) %>% 
+#   mutate(month = month(date, label = T, abbr = T)) %>% 
+#   select(month)
+# active.groups <- factor(active.groups$month)
+# active.dist <- vegdist(OTUs.REL.active, method = "bray")
+# active.bdisp <- betadisper(active.dist, group = active.groups)
+# plot(active.bdisp)
+# anova(active.bdisp)
+# boxplot(active.bdisp)
+
+
+# total.groups <- filter(design, sample.type == "RNA") %>% 
+#   full_join(total.traj.df) %>% 
+#   mutate(month = month(date, label = T, abbr = T)) %>% 
+#   select(month)
+# total.groups <- factor(total.groups$month)
+# total.dist <- vegdist(OTUs.REL.total, method = "bray")
+# total.bdisp <- betadisper(total.dist, group = total.groups)
+# plot(total.bdisp)
+# anova(total.bdisp)
+# boxplot(total.bdisp)
 
 pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
                  cbind.data.frame(active.traj.df, subset = "active")) %>% 
@@ -240,10 +253,11 @@ pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"),
   scale_color_manual("Community Subset", values = c("grey50", "black")) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
   xlab("Time (Week)")
+
 plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
           pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
           labels = c("A", "B"))
-plots %>% ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
+plots + ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
 ```
 
 # Ordinations (Presence-absence based)
@@ -267,7 +281,10 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/seedbank_pcoa_presence-absence.pdf", bg = "white", height = 8, width = 10)
 
 
 # present, but not active
@@ -309,7 +326,11 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/seedbank_pcoa_presence-absence.pdf", bg = "white", height = 8, width = 10)
+  
 
 
 OTUs.pa.dist <- vegdist(OTUs.REL, method = "bray", binary = T)
@@ -360,7 +381,11 @@ filter(design, sample.type == "RNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/active_pcoa_presence-absence.pdf", bg = "white", height = 8, width = 10)
+
 
 filter(design, sample.type == "DNA") %>% 
   full_join(total.pa.traj.df) %>% 
@@ -370,7 +395,11 @@ filter(design, sample.type == "DNA") %>%
   scale_color_viridis(discrete = T, "Month") + 
   theme_cowplot() + 
   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  stat_ellipse() +
+  coord_fixed() +
+  ggsave("figures/total_pcoa_presence-absence.pdf", bg = "white", height = 8, width = 10)
+
 
 pc1.pa.dyn <- rbind.data.frame(cbind.data.frame(total.pa.traj.df, subset = "total.pa"), 
                  cbind.data.frame(active.pa.traj.df, subset = "active.pa")) %>% 
@@ -545,7 +574,7 @@ group_by(ul.mrs, Molecule, Season) %>%
 ```
 
 
-# calculate frequency dependence
+# Calculate Negative Frequency Dependence in Common versus Rare Taxa
 ```{r}
 calc.neg.freq.dep <- function(sbs){
   y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
@@ -681,7 +710,7 @@ nfd.summary
 
 ```{r}
 # What is the effect of taxa number on response
-nfd.response <- function(OTUs = NULL, OTUs.active = NULL, max.taxa = 10, num.iter = 999, plotit = F, incidence.freq = 0.5){
+nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter = 999, plotit = F, incidence.freq = 0.5, max.taxa = NULL){
   
   # separate OTUs present across the whole time series
   OTUs.ranked <- OTUs[,names(sort(colSums(OTUs), decreasing = T))]
@@ -695,7 +724,7 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, max.taxa = 10, num.ite
   }
   
   # decide how many values of cutoffs to test
-  max.taxa <- floor(seq(5, ncol(OTUs.persistent), length.out = max.taxa))
+  max.taxa <- floor(seq(5, min(max.taxa, ncol(OTUs.persistent)), length.out = num.seq))
   output <- data.frame(taxa = max.taxa, 
              p = numeric(length(max.taxa)), 
              ses = numeric(length(max.taxa)),
@@ -736,9 +765,13 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, max.taxa = 10, num.ite
 }
 
 
-active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, max.taxa = 5, num.iter = 100)
+active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 10, num.iter = 999, max.taxa = 100)
 plot(strength ~ taxa, active.nfd.response)
 plot(p ~ taxa, active.nfd.response)
+
+total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 5, num.iter = 100, max.taxa = 100)
+plot(strength ~ taxa, total.nfd.response)
+plot(p ~ taxa, total.nfd.response)
 
 ncol(OTUs.total.nozero)
 taxavec <- c(3,5,8, 10, 20, 25)
