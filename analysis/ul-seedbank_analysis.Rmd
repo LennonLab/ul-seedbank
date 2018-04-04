@@ -19,13 +19,13 @@ require(betapart)
 require(cowplot)
 require(xts)
 require(progress)
+require(cluster)
 ```
 
 ```{r data format, include=FALSE}
 # Load data
 OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
 # OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
-design <- read.csv(file = "data/design.csv")
 
 # Make rel abund matrices and split into active total comms
 # OTUs <- OTUs[,-which(colSums(OTUs) < 5)]
@@ -46,7 +46,12 @@ OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 # read in environmental data
 env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
 env.data$date <- parse_date_time(env.data$date, "m d y")
+env.data$doc[which(env.data$doc == "**")] <- NA
+env.data$doc <- as.numeric(env.data$doc)
+summary(env.data)
+design <- read.csv(file = "data/design.csv")
 design <- left_join(design, env.data[,c("sample.id", "date")])
+env.data <- env.data[-which(!(env.data$date %in% design$date)),]
 ```
 
 # Characterize Temporal Dynamics (Abundance-based)
@@ -454,7 +459,7 @@ turn.disappear <- turnover(df = OTUs.long,
 turn.total %>% mutate(Molecule = mol) %>%
   ggplot(aes(y = total, x = number, color = Molecule))+
   geom_point(size = .75, alpha = 0.5) + 
-  geom_smooth() + 
+  geom_smooth(method = "loess") + 
   ylab("Turnover") + 
   xlab("Time (Week)") +
   scale_color_manual("Community Subset", values = c("grey50", "black")) +
@@ -485,14 +490,14 @@ ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("y
 names(ul.mrs)[3] <- "Molecule"
 
 # Create plot
-pdf("figures/mean_rank_shift.pdf", bg = "white", height = 8, width = 8)
 ggplot(ul.mrs, aes(x = year, y = MRS, color = Molecule)) + 
-  geom_line(size = 1) +
+  geom_line(size = .6, alpha = 0.75) +
   xlab("Time (Week)") + 
   ylab("Mean Rank Shift") +
   theme_cowplot() +
-  scale_color_manual("Community Subset", values = c("grey50", "black"))
-dev.off()
+  scale_color_manual("Community Subset", values = c("grey50", "black")) +
+  ggsave("figures/mean_rank_shift.pdf", bg = "white", height = 6, width = 8)
+
 
 
 # Does one plot type show higher or lower MRS, on average?
@@ -526,51 +531,64 @@ group_by(ul.mrs, Molecule, Season) %>%
 
 # Partition nestedness and turnover
 ```{r}
-# OTUs.pa <- decostand(OTUs.active, method = "pa")
-# OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
-# OTUs.nest <- OTUs.betapart$beta.sne
-# OTUs.turn <- OTUs.betapart$beta.sim
-# OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
-# var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-# var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-# OTUs.traj <- OTUs.pcoa$points
-# colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
-# active.traj <- OTUs.traj
-# 
-# active.traj.df <- cbind.data.frame(
-#   sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
-# filter(design, sample.type == "RNA") %>% 
-#   full_join(active.traj.df) %>% 
-#   mutate(month = month(date, label = T, abbr = T)) %>% 
-#   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
-#   geom_point() + 
-#   scale_color_viridis(discrete = T, "Month") + 
-#   theme_cowplot() + 
-#   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-#   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
-# 
-# OTUs.pa <- decostand(OTUs.total, method = "pa")
-# OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
-# OTUs.nest <- OTUs.betapart$beta.sne
-# OTUs.turn <- OTUs.betapart$beta.sim
-# OTUs.pcoa <- cmdscale(OTUs.turn, eig = T)
-# var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-# var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-# OTUs.traj <- OTUs.pcoa$points
-# colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
-# total.traj <- OTUs.traj
-# total.traj.df <- cbind.data.frame(
-#   sample.id = design$sample.id[which(design$sample.type == "DNA")], total.traj) 
-# 
-# filter(design, sample.type == "DNA") %>% 
-#   full_join(total.traj.df) %>% 
-#   mutate(month = month(date, label = T, abbr = T)) %>% 
-#   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
-#   geom_point() + 
-#   scale_color_viridis(discrete = T, "Month") + 
-#   theme_cowplot() + 
-#   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-#   ylab(paste("PCoA 2 (",var2,"%)", sep = ""))
+OTUs.pa <- decostand(OTUs.active, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+OTUs.sor <- OTUs.betapart$beta.sor
+
+samplingdays <- env.data$date
+time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
+for(i in 1:length(samplingdays)){
+  for(j in 1:length(samplingdays)){
+    time.dist[i,j] <- (samplingdays[i] - samplingdays[j])
+  }
+}
+time.dist <- as.dist(time.dist)
+
+env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
+env.dist <- daisy(scale(env.vars), metric = "gower")
+timeddr <- data.frame(Turnover = as.vector(OTUs.turn), 
+           Nestedness = as.vector(OTUs.nest),
+           Sorensen = as.vector(OTUs.sor),
+           EnvDist = as.vector(env.dist), 
+           Time = as.vector(time.dist))
+
+turn.time.mod <- (lm(Turnover ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
+summary(turn.time.mod)
+newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+preds <- predict(turn.time.mod, newdf)
+plot(Turnover ~ Time, timeddr, col = "gray70")
+lines(newdf$Time, preds, lwd = 2)
+
+env.time.mod <- (lm(EnvDist ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
+summary(env.time.mod)
+newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+preds <- predict(env.time.mod, newdf)
+plot(EnvDist ~ Time, timeddr, col = "gray70")
+lines(newdf$Time, preds, lwd = 2)
+
+plot(env.time.mod)
+
+turn.env.mod <- lm(resid(turn.time.mod) ~ resid(env.time.mod))
+summary(turn.env.mod)
+plot(resid(env.time.mod), resid(turn.time.mod))
+
+nest.time.mod <- (lm(Nestedness ~ Time, data = timeddr))
+summary(nest.time.mod)
+newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+preds <- predict(nest.time.mod, newdf)
+plot(Nestedness ~ Time, timeddr, col = "gray70")
+lines(newdf$Time, preds, lwd = 2)
+
+nest.env.mod <- lm(resid(nest.time.mod) ~ resid(env.time.mod))
+summary(nest.env.mod)
+plot(resid(env.time.mod), resid(nest.time.mod))
+  
+timeddr %>% gather(key = Partition, value = Beta, -EnvDist, -Time) %>% 
+  ggplot(aes(x = EnvDist, y = Beta, color = Partition)) + 
+  geom_point(alpha = 0.1) +
+  geom_smooth(size = 2)
 ```
 
 
@@ -614,9 +632,9 @@ get.null.distr <- function(comm, iters = 5000){
 
 OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
 
-# separate OTUs present across the whole time series
+# separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.ranked[,which(
-  colSums(decostand(OTUs.ranked, method = "pa")) >= 0.5 * nrow(OTUs.ranked))]
+  colMeans(decostand(OTUs.ranked, method = "pa")) >= 0.9)]
 OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
@@ -693,7 +711,7 @@ nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.n
 
 nfd.nulldists %>% 
   ggplot(aes(y = nfd, x = subset)) + 
-  geom_jitter(color = "grey", alpha = 0.2) + 
+  geom_jitter(color = "grey", alpha = 0.1) + 
   geom_violin(alpha = 0.7) + 
   geom_point(data = nfd.obs, aes(x = subset, y = nfd), 
              color = "black", size = 5) + 
@@ -710,12 +728,12 @@ nfd.summary
 
 ```{r}
 # What is the effect of taxa number on response
-nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter = 999, plotit = F, incidence.freq = 0.5, max.taxa = NULL){
+nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter = 999, plotit = F, incidence.freq = 0.9, max.taxa = NULL){
   
   # separate OTUs present across the whole time series
   OTUs.ranked <- OTUs[,names(sort(colSums(OTUs), decreasing = T))]
   OTUs.persistent <- OTUs.ranked[,which(
-    colSums(decostand(OTUs.ranked, method = "pa")) >= incidence.freq * nrow(OTUs.ranked))]
+    colMeans(decostand(OTUs.ranked, method = "pa")) >= incidence.freq)]
   
   # If we're looking at Active OTUs, make the switch here
   if(!is.null(OTUs.active)){
@@ -724,7 +742,7 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter
   }
   
   # decide how many values of cutoffs to test
-  max.taxa <- floor(seq(5, min(max.taxa, ncol(OTUs.persistent)), length.out = num.seq))
+  max.taxa <- floor(seq(3, min(max.taxa, ncol(OTUs.persistent)), length.out = num.seq))
   output <- data.frame(taxa = max.taxa)
   
   # loop through different otu thresholds
@@ -764,10 +782,10 @@ nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter
 }
 
 
-# active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 30, num.iter = 999, max.taxa = 100)
-# total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 30, num.iter = 999, max.taxa = 100)
-# saveRDS(active.nfd.response, file = "analysis/temp-results/nfd_response_active.rda")
-# saveRDS(total.nfd.response, file = "analysis/temp-results/nfd_response_total.rda")
+active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 30, num.iter = 999, max.taxa = 100)
+total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 30, num.iter = 999, max.taxa = 100)
+saveRDS(active.nfd.response, file = "analysis/temp-results/nfd_response_active.rda")
+saveRDS(total.nfd.response, file = "analysis/temp-results/nfd_response_total.rda")
 active.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_active.rda")
 total.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_total.rda")
 
@@ -775,10 +793,17 @@ nfd.response.df <- rbind.data.frame(
   cbind.data.frame(subset = "active", active.nfd.response),
   cbind.data.frame(subset = "total", total.nfd.response))
 nfd.response.df %>% 
-  filter(p < 0.05) %>% 
+#  filter(p < 0.05) %>% 
   ggplot(aes(x = taxa, y = strength, color = subset)) +
   geom_point() +
   geom_smooth()
+
+cbind.data.frame(taxa = active.nfd.response$taxa, 
+      strength = active.nfd.response$strength / total.nfd.response$strength) %>% 
+  ggplot(aes(x = taxa, y = strength)) +
+  geom_point() +
+  geom_abline(slope = 0, intercept = 1, color = "gray") +
+  geom_smooth(method = "loess")
 ```
 
 # Reappeareance Scores
@@ -910,5 +935,60 @@ subset.total <- OTUs.active[,which(colMeans(OTUs.total) > 6)]
 subset.active.t <- subset.active[-nrow(subset.active),]
 subset.active.t1 <- subset.active[-1,]
 
+
+```
+
+```{r}
+library(cooccur)
+
+
+
+active.cooccur <- cooccur(t(decostand(subset.active, method = "pa")), spp_names = TRUE)
+summary(active.cooccur)
+plot(active.cooccur)
+active.coocur.pos <- active.cooccur$results %>% as_tibble() %>% 
+  filter(p_lt < 0.05)
+active.coocur.neg <- active.cooccur$results %>% as_tibble() %>% 
+  filter(p_gt < 0.05)
+  
+# active.effects <- effect.sizes(active.cooccur)
+# 
+# active.attr <- pair.attributes(active.cooccur)
+# active.attr %>% arrange(num_rand)
+active.coocor.spec <- unique(unlist(active.coocur.pos[,1], active.coocur.pos[,2]))
+small.subset <- OTUs.active[,active.coocor.spec]
+library(G1DBN)
+out1 <- DBNScoreStep1(data = small.subset, method = 'ls')
+saveRDS(out1, file = "analysis/temp-results/DBNout1active.rda")
+alpha1 = 0.5
+edgesG1 <- BuildEdges(out1$S1ls, threshold = alpha1, 
+                      targetNames = colnames(small.subset),
+                      predNames = colnames(small.subset))
+edgesG1
+S2 <- DBNScoreStep2(out1$S1ls, data = small.subset, alpha1 = alpha1, method = 'ls')
+alpha2 = 0.05
+edgesG2 <- BuildEdges(score = S2, threshold = alpha2, 
+                      targetNames = colnames(small.subset),
+                      predNames = colnames(small.subset), prec = 6)
+
+netwG1 <- BuildNetwork(edgesG1, Labels = colnames(small.subset))
+netwG2 <- BuildNetwork(edgesG2, Labels = colnames(small.subset))
+
+g2 <- graph.data.frame(netwG2$Edges$List, directed = T)
+E(g2)$weight <- as.numeric(netwG2$Edges$List[,3])
+l <- layout.fruchterman.reingold(g2, niter=5000)
+plot(g2, layout = l, 
+     edge.arrow.size = 0.5,
+     vertex.label.cex = 0.5,
+     vertex.label.font=2,
+     vertex.label.font.family="helvetica",
+     vertex.shape="circle", 
+     vertex.size=1, 
+     vertex.label.color="black", 
+     edge.width=0.5)
+
+netwG1$Edges$List
+pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
+plot(pr1$recall, pr1$precision, type = 'l')
 
 ```
