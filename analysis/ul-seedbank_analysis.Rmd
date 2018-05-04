@@ -24,6 +24,7 @@ require(cluster)
 
 ```{r data format, include=FALSE}
 # Load data
+design <- read.csv(file = "data/design.csv")
 OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
 # OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
 
@@ -49,7 +50,6 @@ env.data$date <- parse_date_time(env.data$date, "m d y")
 env.data$doc[which(env.data$doc == "**")] <- NA
 env.data$doc <- as.numeric(env.data$doc)
 summary(env.data)
-design <- read.csv(file = "data/design.csv")
 design <- left_join(design, env.data[,c("sample.id", "date")])
 env.data <- env.data[-which(!(env.data$date %in% design$date)),]
 ```
@@ -431,10 +431,11 @@ plots.pa %>% ggsave(filename = "figures/pcoa_dynamics_presence-absence.pdf", wid
 
 ## organize data structure for codyn
 ```{r}
-OTUs.long <- as.data.frame(OTUs.REL)
+OTUs.long <- as.data.frame(OTUs)
 OTUs.long$mol <- design$sample.type
 OTUs.long$number <- design$sample.id
 OTUs.long <- gather(OTUs.long, key = otu, value = abundance, -mol, -number)
+
 
 # Calculate turnover
 turn.total <- turnover(df = OTUs.long, 
@@ -480,6 +481,8 @@ group_by(turn.total, mol, Season) %>%
 
 turn.total %>% group_by(mol) %>% summarize(avg.turn = mean(total))
 # Mean Rank Shift
+
+head(OTUs.long)
 ul.mrs <- rank_shift(df = OTUs.long,
            time.var = "number",
            species.var = "otu",
@@ -527,15 +530,15 @@ group_by(ul.mrs, Molecule, Season) %>%
 #   xlab("Time Interval (Weeks)") +
 #   theme_minimal()
 # rate.plot
+
+decostand(OTUs, method = )
 ```
 
 # Partition nestedness and turnover
 ```{r}
-OTUs.pa <- decostand(OTUs.active, method = "pa")
-OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
-OTUs.nest <- OTUs.betapart$beta.sne
-OTUs.turn <- OTUs.betapart$beta.sim
-OTUs.sor <- OTUs.betapart$beta.sor
+library(adespatial)
+active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
+total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
 
 samplingdays <- env.data$date
 time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
@@ -548,47 +551,102 @@ time.dist <- as.dist(time.dist)
 
 env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
 env.dist <- daisy(scale(env.vars), metric = "gower")
-timeddr <- data.frame(Turnover = as.vector(OTUs.turn), 
-           Nestedness = as.vector(OTUs.nest),
-           Sorensen = as.vector(OTUs.sor),
+
+OTUs.pa <- decostand(OTUs.total, method = "pa")
+OTUs.betapart <- beta.pair(x = OTUs.pa, index.family = "sorensen")
+OTUs.nest <- OTUs.betapart$beta.sne
+OTUs.turn <- OTUs.betapart$beta.sim
+OTUs.sor <- OTUs.betapart$beta.sor
+OTUs.bray.tot <- vegdist(OTUs.total, method = "bray")
+OTUs.bray.act <- vegdist(OTUs.active, method = "bray")
+OTUs.bray.sb <- seedbank.dist
+OTUS.bray.trans <- transients.dist
+
+timeddr <- data.frame(total_repl = as.vector(total.comp$repl),
+                      total_rich = as.vector(total.comp$rich),
+                      active_repl = as.vector(active.comp$repl),
+                      active_rich = as.vector(active.comp$rich),
            EnvDist = as.vector(env.dist), 
            Time = as.vector(time.dist))
-
-turn.time.mod <- (lm(Turnover ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
-summary(turn.time.mod)
-newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
-preds <- predict(turn.time.mod, newdf)
-plot(Turnover ~ Time, timeddr, col = "gray70")
-lines(newdf$Time, preds, lwd = 2)
-
-env.time.mod <- (lm(EnvDist ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
-summary(env.time.mod)
-newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
-preds <- predict(env.time.mod, newdf)
-plot(EnvDist ~ Time, timeddr, col = "gray70")
-lines(newdf$Time, preds, lwd = 2)
-
-plot(env.time.mod)
-
-turn.env.mod <- lm(resid(turn.time.mod) ~ resid(env.time.mod))
-summary(turn.env.mod)
-plot(resid(env.time.mod), resid(turn.time.mod))
-
-nest.time.mod <- (lm(Nestedness ~ Time, data = timeddr))
-summary(nest.time.mod)
-newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
-preds <- predict(nest.time.mod, newdf)
-plot(Nestedness ~ Time, timeddr, col = "gray70")
-lines(newdf$Time, preds, lwd = 2)
-
-nest.env.mod <- lm(resid(nest.time.mod) ~ resid(env.time.mod))
-summary(nest.env.mod)
-plot(resid(env.time.mod), resid(nest.time.mod))
-  
-timeddr %>% gather(key = Partition, value = Beta, -EnvDist, -Time) %>% 
-  ggplot(aes(x = EnvDist, y = Beta, color = Partition)) + 
+timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
   geom_point(alpha = 0.1) +
   geom_smooth(size = 2)
+timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
+  geom_jitter(alpha = 0.1, shape = 16, size = 0.7) +
+  geom_smooth(size = 2) +
+  ylab("Community Dissimilarity\n") + 
+  xlab("Time lag (days)") +
+  scale_y_continuous(limits = c(0,1))
+
+# timeddr <- data.frame(Turnover = as.vector(OTUs.turn), 
+#            Nestedness = as.vector(OTUs.nest),
+#            Sorensen = as.vector(OTUs.sor),
+#            Bray_tot = as.vector(OTUs.bray.tot),
+#            Bray_act = as.vector(OTUs.bray.act),
+#            Bray_sb = as.vector(OTUs.bray.sb),
+#            EnvDist = as.vector(env.dist), 
+#            Time = as.vector(time.dist))
+
+# turn.time.mod <- (lm(Turnover ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
+# summary(turn.time.mod)
+# newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+# preds <- predict(turn.time.mod, newdf)
+# plot(Turnover ~ Time, timeddr, col = "gray70")
+# lines(newdf$Time, preds, lwd = 2)
+# 
+# env.time.mod <- (lm(EnvDist ~ Time + I(Time^2) + I(Time^3) + I(Time^4) + I(Time^5), data = timeddr))
+# summary(env.time.mod)
+# newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+# preds <- predict(env.time.mod, newdf)
+# plot(EnvDist ~ Time, timeddr, col = "gray70")
+# lines(newdf$Time, preds, lwd = 2)
+# 
+# plot(env.time.mod)
+# 
+# turn.env.mod <- lm(resid(turn.time.mod) ~ resid(env.time.mod))
+# summary(turn.env.mod)
+# plot(resid(env.time.mod), resid(turn.time.mod))
+# 
+# nest.time.mod <- (lm(Nestedness ~ Time, data = timeddr))
+# summary(nest.time.mod)
+# newdf <- data.frame(Time = min(timeddr$Time):max(timeddr$Time))
+# preds <- predict(nest.time.mod, newdf)
+# plot(Nestedness ~ Time, timeddr, col = "gray70")
+# lines(newdf$Time, preds, lwd = 2)
+# 
+# nest.env.mod <- lm(resid(nest.time.mod) ~ resid(env.time.mod))
+# summary(nest.env.mod)
+# plot(resid(env.time.mod), resid(nest.time.mod))
+  
+# timeddr %>% gather(key = Partition, value = Beta, -EnvDist, -Time) %>% 
+#   ggplot(aes(x = EnvDist, y = Bray, color = Partition)) + 
+#   geom_point(alpha = 0.1) +
+#   geom_smooth(size = 2)
+# timeddr %>% gather(key = Partition, value = Beta, -EnvDist, -Time) %>% 
+#   ggplot(aes(x = Time, y = Beta, color = Partition)) + 
+#   geom_point(alpha = 0.1) +
+#   geom_smooth(size = 2)
+
+timeddr <- data.frame(total = as.vector(OTUs.bray.tot),
+           active = as.vector(OTUs.bray.act),
+           seedbank = as.vector(OTUs.bray.sb),
+           transients = as.vector(OTUS.bray.trans),
+           EnvDist = as.vector(env.dist), 
+           Time = as.vector(time.dist))
+timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
+  geom_point(alpha = 0.1) +
+  geom_smooth(size = 2)
+timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
+  geom_jitter(alpha = 0.1, shape = 16, size = 0.7) +
+  geom_smooth(size = 2) +
+  ylab("Community Dissimilarity\n") + 
+  xlab("Time lag (days)") +
+  scale_y_continuous(limits = c(0,1)) +
+  ggsave("figures/dissimilarity-by-time.pdf", bg = "white", height = 8, width = 8)
 ```
 
 
@@ -891,7 +949,8 @@ ttrs <- rbind.data.frame(cbind.data.frame(subset = "active", active.ttr),
                  cbind.data.frame(subset = "transients", transient.ttr))
 ttrs %>% 
   ggplot(aes(x = week, y = taxa, color = subset)) + 
-  geom_line(size = 2)
+  geom_line(size = 2) + 
+  ggsave("figures/taxa_time_relationships.pdf", bg = "white", height = 8, width = 8)
 ```
 
 # Conditionally Rare Taxa
@@ -991,4 +1050,132 @@ netwG1$Edges$List
 pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
 plot(pr1$recall, pr1$precision, type = 'l')
 
+```
+
+
+```{r}
+library(rEDM)
+limno <- OTUs.active[,2]
+plot(limno, type = 'l')
+lib <- c(1,52)
+pred <- c(53,123)
+s.out <- simplex(limno, lib, pred)
+str(s.out)
+plot(s.out$E, s.out$rho, type = 'l')
+s.out <- simplex(limno, lib, pred, E = 10, tp = 1:10)
+plot(s.out$tp, s.out$rho, type = 'l')
+s.map.out <- s_map(limno, lib, pred, E = 2)
+plot(s.map.out$theta, s.map.out$rho, type = 'l',
+     xlab = "nonlinearity (theta)", ylab = "rho")
+```
+
+
+```{r}
+library(AEM)
+samplingdays <- env.data$date
+time.dist <- numeric(length(samplingdays))
+intervals <- as.vector(diff.Date(samplingdays))
+w <- 1/(intervals/max(intervals))
+aem.out <- aem.time(n = length(samplingdays),
+                    w = w, moran = T,
+                    plot.moran = T)
+aem.eigs <- aem.out$aem
+aem.out$values
+total.varpar <- varpart(OTUs.total, na.omit(env.vars), aem.eigs, transfo = "hellinger")
+total.rda <- rda(OTUs.total, aem.eigs)
+
+```
+
+
+```{r}
+shuffle.ts <- function(species.ts){
+  species.ts[sample(1:length(species.ts))]
+}
+
+get.null.mrs <- function(comm, iters = 100){
+  pb <- progress_bar$new(total = iters)
+  mrs.null <- rep(NA, iters)
+  for(i in 1:iters){
+    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+    nullcom.ranks <- decostand(nullcom, method = "rank")
+    S <- specnumber(nullcom.ranks[-nrow(nullcom.ranks),])
+    nmrs <- rowSums(abs(diff(nullcom.ranks))) / S
+    mrs.null[i] <- mean(nmrs)
+    pb$tick()
+  }
+  return(mrs.null)
+}
+
+total.null <- get.null.mrs(OTUs.total)
+active.null <- get.null.mrs(OTUs.active)
+
+OTUs.total.ranks <- decostand(OTUs.total, method = "rank")
+MRS.total <- rowSums(abs(diff(OTUs.total.ranks))) / specnumber(OTUs.total.ranks[-nrow(OTUs.total.ranks),])
+plot(MRS.total, type = 'l')
+
+OTUs.active.ranks <- decostand(OTUs.active, method = "rank")
+MRS.active <- rowSums(abs(diff(OTUs.active.ranks))) / specnumber(OTUs.active.ranks[-nrow(OTUs.active.ranks),])
+points(MRS.active, type = 'l', col = 'red')
+
+MRS.total.ses <- (MRS.total - mean(total.null)) / sd(total.null)
+MRS.active.ses <- (MRS.active - mean(active.null)) / sd(active.null)
+matplot(cbind(MRS.total.ses, MRS.active.ses), type = 'l')
+
+plot(env.vars$temp[-123], MRS.total)
+plot(env.vars$temp[-123], MRS.active)
+
+plot(MRS.total, MRS.active)
+abline(0,1)
+```
+
+
+```{r}
+OTUs.total.persistent <- OTUs.ranked[,which(
+  colMeans(decostand(OTUs.ranked, method = "pa")) >= .9)]
+OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
+total.persistent <- as.data.frame(OTUs.total.persistent)
+active.persistent <- as.data.frame(OTUs.active.persistent)
+total.persistent$date <- env.data$date
+active.persistent$date <- env.data$date
+total.persistent %>%
+  gather(key = OTU, value = abundance, -date) %>% 
+  ggplot(aes(x = date, y = abundance, color = OTU)) + 
+  geom_line() +
+  scale_y_log10()
+active.persistent %>%
+  gather(key = OTU, value = abundance, -date) %>% 
+  ggplot(aes(x = date, y = abundance, color = OTU)) + 
+  geom_line() +
+  scale_y_log10()
+
+inactive <- which(colMeans(decostand(OTUs.active.persistent, method = 'pa')) < 1)
+matplot(OTUs.active.persistent[,inactive], type = 'l')
+
+
+calc.growth <- function(sbs, dates){
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  dt <- as.vector(diff(dates))
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = (log(sbs[i+1,]) - log(sbs[i,])) / dt[i]
+  }
+  
+  return(y.s)
+}
+active.growths <- calc.growth(sbs = (OTUs.active.persistent + 1), dates = env.data$date)
+plot(active.growths[,2], type = 'l')
+max.growths <- apply(active.growths, MARGIN = 2, FUN = which.max)
+data.frame(date = month(env.data$date[max.growths], label = T)) %>% 
+  ggplot(aes(x = date)) + 
+  geom_bar()
+dim(active.growths)
+dim(OTUs.active.persistent[-1,])
+
+total.growths <- calc.growth(sbs = (OTUs.total.persistent + 1), dates = env.data$date)
+plot(total.growths[,2], type = 'l')
+max.growths <- apply(active.growths, MARGIN = 2, FUN = which.max)
+data.frame(date = month(env.data$date[max.growths], label = T)) %>% 
+  ggplot(aes(x = date)) + 
+  geom_bar()
+dim(active.growths)
+dim(OTUs.active.persistent[-1,])
 ```
