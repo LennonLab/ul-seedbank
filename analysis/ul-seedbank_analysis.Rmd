@@ -38,6 +38,8 @@ OTUs <- readRDS(file = "data/Rdata/OTUs_rarefied.rda")
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
 OTUs.total <- decostand(OTUs.active, method = "pa") + OTUs.total
+OTUs.total.pa <- decostand(OTUs.total, method = "pa")
+OTUs.active.pa <- decostand(OTUs.active, method = "pa")
 
 #OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL <- decostand(OTUs, method = "total")
@@ -46,7 +48,7 @@ OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 
 # read in environmental data
 env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
-env.data$date <- parse_date_time(env.data$date, "m d y")
+env.data$date <- as.Date(parse_date_time(env.data$date, "m d y"))
 env.data$doc[which(env.data$doc == "**")] <- NA
 env.data$doc <- as.numeric(env.data$doc)
 summary(env.data)
@@ -54,7 +56,37 @@ design <- left_join(design, env.data[,c("sample.id", "date")])
 env.data <- env.data[-which(!(env.data$date %in% design$date)),]
 ```
 
-# Characterize Temporal Dynamics (Abundance-based)
+# Characterize temporal dynamics of the bacterioplankton community 
+
+## How does alpha diversity vary over time?
+```{r}
+alpha.div.total <- exp(diversity(OTUs.total, index = "shannon")) # spec equivs
+alpha.div.active <- exp(diversity(OTUs.active, index = "shannon"))
+data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.active) %>% 
+  gather(community, diversity, -date) %>% 
+  ggplot(aes(x = date, y = diversity, color = community)) + 
+  geom_line(size = 1, alpha = .9) +
+  ylab(expression(paste(alpha,"-diversity (species equivalents)"))) +
+  xlab("Date") +
+  scale_x_date(date_breaks = "3 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_color_manual("Community Subset", values = c("#b2df8a", "#1f78b4")) +
+  ggsave("figures/alpha_diversity.pdf", bg = "white", height = 6, width = 8)
+```
+
+```{r}
+alpha.ts <- zoo(alpha.div.active, env.data$date)
+temp.ts <- zoo(env.data$temp, env.data$date)
+
+require(synchrony)
+alpha.sync.active <- community.sync(OTUs.active[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
+alpha.sync.total <- community.sync(OTUs.total[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
+alpha.sync.active
+alpha.sync.total
+```
+
+
+### Ordination methods (abundance-based)
 ```{r}
 # never active
 transients <- OTUs.REL.total[,which(colSums(OTUs.REL.active) == 0)]
