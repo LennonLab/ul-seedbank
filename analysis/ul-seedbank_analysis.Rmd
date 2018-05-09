@@ -20,6 +20,7 @@ require(cowplot)
 require(xts)
 require(progress)
 require(cluster)
+library(adespatial)
 ```
 
 ```{r data format, include=FALSE}
@@ -54,6 +55,9 @@ env.data$doc <- as.numeric(env.data$doc)
 summary(env.data)
 design <- left_join(design, env.data[,c("sample.id", "date")])
 env.data <- env.data[-which(!(env.data$date %in% design$date)),]
+
+# Define color pallette
+my.cols <- viridis(4, begin = .3, end = 0.8)
 ```
 
 # Characterize temporal dynamics of the bacterioplankton community 
@@ -65,27 +69,24 @@ alpha.div.active <- exp(diversity(OTUs.active, index = "shannon"))
 data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.active) %>% 
   gather(community, diversity, -date) %>% 
   ggplot(aes(x = date, y = diversity, color = community)) + 
+  geom_vline(xintercept = as.numeric(as.Date(c("2014-01-01", "2015-01-01"))),
+             linetype = 2, color = "grey", alpha = 0.8) +
   geom_line(size = 1, alpha = .9) +
   ylab(expression(paste(alpha,"-diversity (species equivalents)"))) +
   xlab("Date") +
-  scale_x_date(date_breaks = "3 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_color_manual("Community Subset", values = c("#b2df8a", "#1f78b4")) +
+  #scale_color_manual("Community Subset", values = c("#b2df8a", "#1f78b4")) +
+  scale_color_manual("Community Subset", values = my.cols[c(4,1)]) +
+  scale_y_log10(limits = c(1,1000),
+                breaks = c(1,10,100,1000),
+                labels = c("1", "10", "100", "1000")) +
+  annotation_logticks(sides = "l") +
   ggsave("figures/alpha_diversity.pdf", bg = "white", height = 6, width = 8)
 ```
 
-```{r}
-alpha.ts <- zoo(alpha.div.active, env.data$date)
-temp.ts <- zoo(env.data$temp, env.data$date)
 
-require(synchrony)
-alpha.sync.active <- community.sync(OTUs.active[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
-alpha.sync.total <- community.sync(OTUs.total[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
-alpha.sync.active
-alpha.sync.total
-```
-
-
+## How does community composition change over time?
 ### Ordination methods (abundance-based)
 ```{r}
 # never active
@@ -116,6 +117,8 @@ filter(design, sample.type == "RNA") %>%
 seedbank <- OTUs.REL.active == 0 & OTUs.REL.total != 0
 seedbank <- seedbank * OTUs.REL.total
 seedbank <- seedbank[,which(colSums(seedbank) > 0)]
+# remove transients
+seedbank <- seedbank[, -which(colnames(seedbank) %in% colnames(transients))]
 
 seedbank.dist <- vegdist(seedbank, method = "bray")
 seedbank.pcoa <- cmdscale(seedbank.dist, eig = T)
@@ -274,22 +277,27 @@ filter(design, sample.type == "DNA") %>%
 # anova(total.bdisp)
 # boxplot(total.bdisp)
 
-pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
-                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
-  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+
+pc1.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "Total", Date = env.data$date), 
+                 cbind.data.frame(active.traj.df, subset = "Active", Date = env.data$date)) %>% 
+  ggplot(aes(x = Date, y = Comp.1, color = subset)) + 
   geom_line(size = 0.75) + 
-  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  scale_color_manual("Community Subset", values = my.cols[c(1,4)]) + 
   ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  xlab("") + 
+  xlab("") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   theme(legend.direction = "vertical", legend.position = "right")
 
-pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "total"), 
-                 cbind.data.frame(active.traj.df, subset = "active")) %>% 
-  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+pc2.dyn <- rbind.data.frame(cbind.data.frame(total.traj.df, subset = "Total", Date = env.data$date), 
+                 cbind.data.frame(active.traj.df, subset = "Active", Date = env.data$date)) %>% 
+  ggplot(aes(x = Date, y = Comp.2, color = subset)) + 
   geom_line(size = 0.75) + 
-  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  scale_color_manual("Community Subset", values = my.cols[c(1,4)]) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
-  xlab("Time (Week)")
+  xlab("Date") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 plots <- plot_grid(pc1.dyn + theme(legend.position = "none"), 
           pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
@@ -297,7 +305,7 @@ plots <- plot_grid(pc1.dyn + theme(legend.position = "none"),
 plots + ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
 ```
 
-# Ordinations (Presence-absence based)
+### Ordinations (Presence-absence based)
 ```{r}
 # never active
 transients.pa <- OTUs.REL.total[,which(colSums(OTUs.REL.active) == 0)]
@@ -328,6 +336,8 @@ filter(design, sample.type == "RNA") %>%
 seedbank.pa <- OTUs.REL.active == 0 & OTUs.REL.total != 0
 seedbank.pa <- seedbank.pa * OTUs.REL.total
 seedbank.pa <- seedbank.pa[,which(colSums(seedbank.pa) > 0)]
+# remove transients
+seedbank.pa <- seedbank.pa[, -which(colnames(seedbank.pa) %in% colnames(transients))]
 
 seedbank.pa.dist <- vegdist(seedbank.pa, method = "bray", binary = T)
 seedbank.pa.pcoa <- cmdscale(seedbank.pa.dist, eig = T)
@@ -438,22 +448,29 @@ filter(design, sample.type == "DNA") %>%
   ggsave("figures/total_pcoa_presence-absence.pdf", bg = "white", height = 8, width = 10)
 
 
-pc1.pa.dyn <- rbind.data.frame(cbind.data.frame(total.pa.traj.df, subset = "total.pa"), 
-                 cbind.data.frame(active.pa.traj.df, subset = "active.pa")) %>% 
-  ggplot(aes(x = sample.id, y = Comp.1, color = subset)) + 
+pc1.pa.dyn <- rbind.data.frame(
+  cbind.data.frame(total.pa.traj.df, subset = "total.pa", Date = env.data$date),
+  cbind.data.frame(active.pa.traj.df, subset = "active.pa", Date = env.data$date)) %>% 
+  ggplot(aes(x = Date, y = Comp.1, color = subset)) + 
   geom_line(size = 0.75) + 
-  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  scale_color_manual("Community Subset", values = my.cols[c(1,4)]) + 
   ylab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  xlab("") + 
+  xlab("") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   theme(legend.direction = "vertical", legend.position = "right")
 
-pc2.pa.dyn <- rbind.data.frame(cbind.data.frame(total.pa.traj.df, subset = "total.pa"), 
-                 cbind.data.frame(active.pa.traj.df, subset = "active.pa")) %>% 
-  ggplot(aes(x = sample.id, y = Comp.2, color = subset)) + 
+pc2.pa.dyn <- rbind.data.frame(
+  cbind.data.frame(total.pa.traj.df, subset = "total.pa", Date = env.data$date), 
+  cbind.data.frame(active.pa.traj.df, subset = "active.pa", Date = env.data$date)) %>% 
+  ggplot(aes(x = Date, y = Comp.2, color = subset)) + 
   geom_line(size = 0.75) + 
-  scale_color_manual("Community Subset", values = c("grey50", "black")) + 
+  scale_color_manual("Community Subset", values = my.cols[c(1,4)]) + 
   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
-  xlab("Time (Week)")
+  xlab("Date") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
 plots.pa <- plot_grid(pc1.pa.dyn + theme(legend.position = "none"), 
           pc2.pa.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
           labels = c("A", "B"))
@@ -461,7 +478,7 @@ plots.pa %>% ggsave(filename = "figures/pcoa_dynamics_presence-absence.pdf", wid
 ```
 
 
-## organize data structure for codyn
+### Turnover Analysis
 ```{r}
 OTUs.long <- as.data.frame(OTUs)
 OTUs.long$mol <- design$sample.type
@@ -489,29 +506,61 @@ turn.disappear <- turnover(df = OTUs.long,
                        metric = "disappearance")
 
 # Make figure showing turnover in different subsets
-turn.total %>% mutate(Molecule = mol) %>%
+turn.total %>% mutate(Molecule = ifelse(turn.total$mol == "DNA", "Total", "Active")) %>%
   ggplot(aes(y = total, x = number, color = Molecule))+
   geom_point(size = .75, alpha = 0.5) + 
   geom_smooth(method = "loess") + 
   ylab("Turnover") + 
   xlab("Time (Week)") +
-  scale_color_manual("Community Subset", values = c("grey50", "black")) +
+  scale_color_manual("Community Subset", values = my.cols[c(4,1)]) +
   ggsave("figures/turnover-total.pdf", height = 6, width = 8, bg = "white")
-ggplot(turn.appear, aes(y = appearance, x = number, color = mol))+
-  geom_smooth() + 
-  geom_point()
-ggplot(turn.disappear, aes(y = disappearance, x = number, color = mol))+
-  geom_smooth() + 
-  geom_point()
+turn.appear %>% mutate(Molecule = ifelse(turn.appear$mol == "DNA", "Total", "Active")) %>%
+  ggplot(aes(y = appearance, x = number, color = Molecule))+
+  geom_point(size = .75, alpha = 0.5) + 
+  geom_smooth(method = "loess") + 
+  ylab("Turnover") + 
+  xlab("Time (Week)") +
+  scale_color_manual("Community Subset", values = my.cols[c(4,1)]) +
+  ggsave("figures/turnover-appear.pdf", height = 6, width = 8, bg = "white")
+turn.disappear %>% mutate(Molecule = ifelse(turn.disappear$mol == "DNA", "Total", "Active")) %>%
+  ggplot(aes(y = disappearance, x = number, color = Molecule))+
+  geom_point(size = .75, alpha = 0.5) + 
+  geom_smooth(method = "loess") + 
+  ylab("Turnover") + 
+  xlab("Time (Week)") +
+  scale_color_manual("Community Subset", values = my.cols[c(4,1)]) +
+  ggsave("figures/turnover-disappear.pdf", height = 6, width = 8, bg = "white")
+
 
 dates <- left_join(design[-which(design$sample.id == 1),], env.data) %>% select(date)
-turn.total$Season <- ifelse(month(dates$date) %in% c(5:10), "Summer", "Winter")
+turn.total$Season <- ifelse(month(dates$date) %in% c(3:5), "Spring", 
+                            ifelse(month(dates$date) %in% c(6:8), "Summer",
+                                   ifelse(month(dates$date) %in% c(9:11), "Fall",
+                                          ifelse(month(dates$date) %in% c(12,1,2), "Winter", NA))))
 group_by(turn.total, mol, Season) %>% 
   summarise(
     mean = mean(total),
     cv = sd(total)/mean)
+turn.total %>% mutate(Molecule = ifelse(turn.total$mol == "DNA", "Total", "Active")) %>%
+  ggplot(aes(y = total, fill = Molecule, x = Season))+
+  geom_boxplot(alpha = 0.5) +
+  scale_fill_manual("Community Subset", values = my.cols[c(4,1)]) +
+  ylab("Turnover") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggsave("figures/turnover_season.pdf", bg = "white", width = 6, height = 6)
 
-turn.total %>% group_by(mol) %>% summarize(avg.turn = mean(total))
+turn.total %>% mutate(Molecule = ifelse(turn.total$mol == "DNA", "Total", "Active")) %>%
+  mutate(Month = month(dates$date, label = T, abbr = T)) %>% 
+  ggplot(aes(y = total, fill = Molecule, x = Month)) +
+  geom_boxplot(alpha = 0.5) +
+  scale_fill_manual("Community Subset", values = my.cols[c(4,1)]) +
+  ylab("Turnover") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  ggsave("figures/turnover_month.pdf", bg = "white", width = 8, height = 6)
+```
+
+### Mean Rank Shift
+```{r}
 # Mean Rank Shift
 
 head(OTUs.long)
@@ -524,13 +573,21 @@ ul.mrs <- rank_shift(df = OTUs.long,
 ul.mrs$year <- as.numeric(colsplit(ul.mrs$year_pair, pattern = "-", names = c("year1", "year2"))[,2])
 names(ul.mrs)[3] <- "Molecule"
 
+
 # Create plot
-ggplot(ul.mrs, aes(x = year, y = MRS, color = Molecule)) + 
+ul.mrs %>% mutate(Molecule = ifelse(Molecule == "DNA", "Total", "Active"), 
+                  Date = env.data$date[year]) %>% 
+  ggplot(aes(x = Date, y = MRS, color = Molecule)) + 
   geom_line(size = .6, alpha = 0.75) +
-  xlab("Time (Week)") + 
+  xlab("Date") +
+  scale_x_date(date_breaks = "2 month", date_minor_breaks = "1 month", date_labels = "%b-%y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Mean Rank Shift") +
-  theme_cowplot() +
-  scale_color_manual("Community Subset", values = c("grey50", "black")) +
+  # scale_y_log10(limits = c(100,1000),
+  #               breaks = c(100,1000),
+  #               labels = c("100", "1000")) +
+  annotation_logticks(sides = "l") +
+  scale_color_manual("Community Subset", values = my.cols[c(4,1)]) +
   ggsave("figures/mean_rank_shift.pdf", bg = "white", height = 6, width = 8)
 
 
@@ -562,13 +619,22 @@ group_by(ul.mrs, Molecule, Season) %>%
 #   xlab("Time Interval (Weeks)") +
 #   theme_minimal()
 # rate.plot
-
-decostand(OTUs, method = )
 ```
 
-# Partition nestedness and turnover
+### How synchronous are community dynamics?
 ```{r}
-library(adespatial)
+alpha.ts <- zoo(alpha.div.active, env.data$date)
+temp.ts <- zoo(env.data$temp, env.data$date)
+
+require(synchrony)
+alpha.sync.active <- community.sync(OTUs.active[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
+alpha.sync.total <- community.sync(OTUs.total[,which(colMeans(OTUs.total.pa) >= 1)], nrands = 1000)
+alpha.sync.active
+alpha.sync.total
+```
+
+### Is temporal beta diversity driven by nestedness or turnover?
+```{r}
 active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
 total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
 
@@ -593,6 +659,7 @@ OTUs.bray.tot <- vegdist(OTUs.total, method = "bray")
 OTUs.bray.act <- vegdist(OTUs.active, method = "bray")
 OTUs.bray.sb <- seedbank.dist
 OTUS.bray.trans <- transients.dist
+
 
 timeddr <- data.frame(total_repl = as.vector(total.comp$repl),
                       total_rich = as.vector(total.comp$rich),
@@ -661,28 +728,40 @@ timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>%
 #   geom_point(alpha = 0.1) +
 #   geom_smooth(size = 2)
 
-timeddr <- data.frame(total = as.vector(OTUs.bray.tot),
-           active = as.vector(OTUs.bray.act),
-           seedbank = as.vector(OTUs.bray.sb),
-           transients = as.vector(OTUS.bray.trans),
+timeddr <- data.frame(Total = as.vector(OTUs.bray.tot),
+           Active = as.vector(OTUs.bray.act),
+           "Seed bank" = as.vector(OTUs.bray.sb),
+           Transients = as.vector(OTUS.bray.trans),
            EnvDist = as.vector(env.dist), 
            Time = as.vector(time.dist))
-timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-  ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
-  geom_point(alpha = 0.1) +
-  geom_smooth(size = 2)
-timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-  ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
+
+ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = EnvDist, y = (1-Dissimilarity), color = Community)) + 
+  geom_point(alpha = 0.1, shape = 16, size = 0.7) +
+  geom_smooth(size = 2, method = "gam") +
+  scale_y_log10() +
+  labs(y = "Community Similarity", x = "Environmental Dissimilarity") +
+  scale_color_manual(values = my.cols[c(4,2,1,3)]) +
+  ggsave("figures/dissimilarity-by-env.pdf", bg = "white", height = 8, width = 8)
+
+ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  ggplot(aes(x = Time, y = 1-Dissimilarity, color = Community)) + 
+  geom_vline(xintercept = 365*c(1,2), color = "grey", alpha = 0.5) +
   geom_jitter(alpha = 0.1, shape = 16, size = 0.7) +
   geom_smooth(size = 2) +
-  ylab("Community Dissimilarity\n") + 
+  ylab("Community Similarity") + 
   xlab("Time lag (days)") +
-  scale_y_continuous(limits = c(0,1)) +
+  scale_color_manual(values = my.cols[c(4,2,1,3)]) +
+  scale_y_log10() + 
   ggsave("figures/dissimilarity-by-time.pdf", bg = "white", height = 8, width = 8)
+
+plot_grid(ddr.time + theme(legend.position = "none"), 
+          ddr.env + theme(legend.position = "none"), ncol = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B")) +
+  ggsave(filename = "figures/ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
 ```
 
-
-# Calculate Negative Frequency Dependence in Common versus Rare Taxa
+# Is negative frequency dependence disproportionately stronger on rare than common taxa?
 ```{r}
 calc.neg.freq.dep <- function(sbs){
   y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
@@ -720,19 +799,17 @@ get.null.distr <- function(comm, iters = 5000){
   return(nfd.cov)
 }
 
-OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
+# OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
 
 # separate OTUs present across the nearly whole time series
-OTUs.total.persistent <- OTUs.ranked[,which(
-  colMeans(decostand(OTUs.ranked, method = "pa")) >= 0.9)]
+OTUs.total.persistent <- OTUs.total[,which(
+  colMeans(decostand(OTUs, method = "pa")) >= 0.9)]
 OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
-(otu.thresh <- min(25, ncol(OTUs.total.persistent)))
+(otu.thresh <- min(50, ncol(OTUs.total.persistent)))
 
 OTUs.total.nozero <- OTUs.total.persistent[,1:otu.thresh] + 10^-10
-OTUs.REL.total.nozero <- decostand(OTUs.total[,1:otu.thresh], method = "total") + 10^-10
-
 nfd.total <- calc.neg.freq.dep(OTUs.total.nozero)
 nfd.total %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.total
 nfd.total.cov <- cov(log(nfd.total$eq.freq), log(-nfd.total$fd))
@@ -745,8 +822,6 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   xlab("Equilibrium Frequency")
 
 OTUs.active.nozero <- OTUs.active.persistent[,1:otu.thresh] + 10^-10
-OTUs.REL.active.nozero <- decostand(OTUs.active[,1:otu.thresh], method = "total") + 10^-10
-
 nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
 nfd.active %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.active
 nfd.active.cov <- cov(log(nfd.active$eq.freq), log(-nfd.active$fd))
@@ -758,24 +833,11 @@ nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
   ylab("Negative Frequency Dependence") + 
   xlab("Equilibrium Frequency")
 
-# OTUs.seedbank.nozero <- seedbank[,1:otu.thresh] + 10^-10
-# OTUs.REL.seedbank.nozero <- decostand(seedbank[,1:otu.thresh], method = "total") + 10^-10
-# nfd.sb <- calc.neg.freq.dep(OTUs.seedbank.nozero)
-# nfd.sb %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.sb
-# nfd.sb.cov <- cov(log(nfd.sb$eq.freq), log(-nfd.sb$fd))
-# nfd.sb %>% ggplot(aes(x = eq.freq, y = -fd)) +
-#   geom_point() + 
-#   scale_y_log10() + 
-#   scale_x_log10() +
-#   ylab("Negative Frequency Dependence") + 
-#   xlab("Equilibrium Frequency")
-
 
 # Generate null distributions
-iternum <- 999
+iternum <- 5000
 tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
-# sb.nd <- get.null.distr(comm = OTUs.seedbank.nozero, iters = iternum)
 
 # Compare observed with null
 hist(tot.nd, breaks = 20); abline(v = nfd.total.cov, col = "red")
@@ -800,19 +862,21 @@ nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.n
                  cbind.data.frame(subset = "Active", nfd = act.nd)) 
 
 nfd.nulldists %>% 
-  ggplot(aes(y = nfd, x = subset)) + 
-  geom_jitter(color = "grey", alpha = 0.1) + 
-  geom_violin(alpha = 0.7) + 
+  ggplot(aes(y = nfd, x = subset, fill = subset)) + 
+  #geom_jitter(color = "grey", alpha = 0.1) + 
+  geom_violin(alpha = 0.5, show.legend = F) + 
   geom_point(data = nfd.obs, aes(x = subset, y = nfd), 
-             color = "black", size = 5) + 
-  ylab("Negative Frequency Dependence") + 
+             color = "black", size = 5, show.legend = F) + 
+  scale_fill_manual(values = my.cols[c(1,4)]) +
+  ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") + 
   xlab("Community Subset") + 
   ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 6, units = "in")
 
 # Calculate standardized effect sizes
 nfd.summary <- nfd.nulldists %>% 
   group_by(subset) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>% 
-  left_join(nfd.obs) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd)
+  left_join(nfd.obs) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>% 
+  mutate(nfd.strength = nfd / mean.nfd)
 nfd.summary
 ```
 
@@ -999,11 +1063,10 @@ identifyCRT <- function(spec.dyn){
   return(b)
  }
 
-activeCRTs <- apply(X = OTUs.REL.active, MARGIN = 2, FUN = identifyCRT)
-totalCRTs <- apply(X = OTUs.REL.total, MARGIN = 2, FUN = identifyCRT)
+activeCRTs <- apply(X = OTUs.REL.active[,which(colMeans(OTUs.active.pa) > 0.5)], MARGIN = 2, FUN = identifyCRT)
+totalCRTs <- apply(X = OTUs.REL.total[,which(colMeans(OTUs.total.pa) > 0.5)], MARGIN = 2, FUN = identifyCRT)
 hist(activeCRTs)
 hist(totalCRTs)
-boxplot(activeCRTs - totalCRTs)
 
 
 candidateCRTs <- names(activeCRTs[which(activeCRTs > 0.9)])
@@ -1015,91 +1078,62 @@ subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
 
 ```
 
-```{r}
-library(glmnet)
-library(igraph)
-library(gridExtra)
-
-subset.active <- OTUs.active[,which(colMeans(OTUs.active) > 6)]
-subset.total <- OTUs.active[,which(colMeans(OTUs.total) > 6)]
-
-subset.active.t <- subset.active[-nrow(subset.active),]
-subset.active.t1 <- subset.active[-1,]
-
-
-```
 
 ```{r}
-library(cooccur)
-
-
-
-active.cooccur <- cooccur(t(decostand(subset.active, method = "pa")), spp_names = TRUE)
-summary(active.cooccur)
-plot(active.cooccur)
-active.coocur.pos <- active.cooccur$results %>% as_tibble() %>% 
-  filter(p_lt < 0.05)
-active.coocur.neg <- active.cooccur$results %>% as_tibble() %>% 
-  filter(p_gt < 0.05)
-  
-# active.effects <- effect.sizes(active.cooccur)
+# library(cooccur)
 # 
-# active.attr <- pair.attributes(active.cooccur)
-# active.attr %>% arrange(num_rand)
-active.coocor.spec <- unique(unlist(active.coocur.pos[,1], active.coocur.pos[,2]))
-small.subset <- OTUs.active[,active.coocor.spec]
-library(G1DBN)
-out1 <- DBNScoreStep1(data = small.subset, method = 'ls')
-saveRDS(out1, file = "analysis/temp-results/DBNout1active.rda")
-alpha1 = 0.5
-edgesG1 <- BuildEdges(out1$S1ls, threshold = alpha1, 
-                      targetNames = colnames(small.subset),
-                      predNames = colnames(small.subset))
-edgesG1
-S2 <- DBNScoreStep2(out1$S1ls, data = small.subset, alpha1 = alpha1, method = 'ls')
-alpha2 = 0.05
-edgesG2 <- BuildEdges(score = S2, threshold = alpha2, 
-                      targetNames = colnames(small.subset),
-                      predNames = colnames(small.subset), prec = 6)
-
-netwG1 <- BuildNetwork(edgesG1, Labels = colnames(small.subset))
-netwG2 <- BuildNetwork(edgesG2, Labels = colnames(small.subset))
-
-g2 <- graph.data.frame(netwG2$Edges$List, directed = T)
-E(g2)$weight <- as.numeric(netwG2$Edges$List[,3])
-l <- layout.fruchterman.reingold(g2, niter=5000)
-plot(g2, layout = l, 
-     edge.arrow.size = 0.5,
-     vertex.label.cex = 0.5,
-     vertex.label.font=2,
-     vertex.label.font.family="helvetica",
-     vertex.shape="circle", 
-     vertex.size=1, 
-     vertex.label.color="black", 
-     edge.width=0.5)
-
-netwG1$Edges$List
-pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
-plot(pr1$recall, pr1$precision, type = 'l')
+# 
+# 
+# active.cooccur <- cooccur(t(decostand(subset.active, method = "pa")), spp_names = TRUE)
+# summary(active.cooccur)
+# plot(active.cooccur)
+# active.coocur.pos <- active.cooccur$results %>% as_tibble() %>% 
+#   filter(p_lt < 0.05)
+# active.coocur.neg <- active.cooccur$results %>% as_tibble() %>% 
+#   filter(p_gt < 0.05)
+#   
+# # active.effects <- effect.sizes(active.cooccur)
+# # 
+# # active.attr <- pair.attributes(active.cooccur)
+# # active.attr %>% arrange(num_rand)
+# active.coocor.spec <- unique(unlist(active.coocur.pos[,1], active.coocur.pos[,2]))
+# small.subset <- OTUs.active[,active.coocor.spec]
+# library(G1DBN)
+# out1 <- DBNScoreStep1(data = small.subset, method = 'ls')
+# saveRDS(out1, file = "analysis/temp-results/DBNout1active.rda")
+# alpha1 = 0.5
+# edgesG1 <- BuildEdges(out1$S1ls, threshold = alpha1, 
+#                       targetNames = colnames(small.subset),
+#                       predNames = colnames(small.subset))
+# edgesG1
+# S2 <- DBNScoreStep2(out1$S1ls, data = small.subset, alpha1 = alpha1, method = 'ls')
+# alpha2 = 0.05
+# edgesG2 <- BuildEdges(score = S2, threshold = alpha2, 
+#                       targetNames = colnames(small.subset),
+#                       predNames = colnames(small.subset), prec = 6)
+# 
+# netwG1 <- BuildNetwork(edgesG1, Labels = colnames(small.subset))
+# netwG2 <- BuildNetwork(edgesG2, Labels = colnames(small.subset))
+# 
+# g2 <- graph.data.frame(netwG2$Edges$List, directed = T)
+# E(g2)$weight <- as.numeric(netwG2$Edges$List[,3])
+# l <- layout.fruchterman.reingold(g2, niter=5000)
+# plot(g2, layout = l, 
+#      edge.arrow.size = 0.5,
+#      vertex.label.cex = 0.5,
+#      vertex.label.font=2,
+#      vertex.label.font.family="helvetica",
+#      vertex.shape="circle", 
+#      vertex.size=1, 
+#      vertex.label.color="black", 
+#      edge.width=0.5)
+# 
+# netwG1$Edges$List
+# pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
+# plot(pr1$recall, pr1$precision, type = 'l')
 
 ```
 
-
-```{r}
-library(rEDM)
-limno <- OTUs.active[,2]
-plot(limno, type = 'l')
-lib <- c(1,52)
-pred <- c(53,123)
-s.out <- simplex(limno, lib, pred)
-str(s.out)
-plot(s.out$E, s.out$rho, type = 'l')
-s.out <- simplex(limno, lib, pred, E = 10, tp = 1:10)
-plot(s.out$tp, s.out$rho, type = 'l')
-s.map.out <- s_map(limno, lib, pred, E = 2)
-plot(s.map.out$theta, s.map.out$rho, type = 'l',
-     xlab = "nonlinearity (theta)", ylab = "rho")
-```
 
 
 ```{r}
@@ -1120,94 +1154,42 @@ total.rda <- rda(OTUs.total, aem.eigs)
 
 
 ```{r}
-shuffle.ts <- function(species.ts){
-  species.ts[sample(1:length(species.ts))]
-}
-
-get.null.mrs <- function(comm, iters = 100){
-  pb <- progress_bar$new(total = iters)
-  mrs.null <- rep(NA, iters)
-  for(i in 1:iters){
-    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
-    nullcom.ranks <- decostand(nullcom, method = "rank")
-    S <- specnumber(nullcom.ranks[-nrow(nullcom.ranks),])
-    nmrs <- rowSums(abs(diff(nullcom.ranks))) / S
-    mrs.null[i] <- mean(nmrs)
-    pb$tick()
-  }
-  return(mrs.null)
-}
-
-total.null <- get.null.mrs(OTUs.total)
-active.null <- get.null.mrs(OTUs.active)
-
-OTUs.total.ranks <- decostand(OTUs.total, method = "rank")
-MRS.total <- rowSums(abs(diff(OTUs.total.ranks))) / specnumber(OTUs.total.ranks[-nrow(OTUs.total.ranks),])
-plot(MRS.total, type = 'l')
-
-OTUs.active.ranks <- decostand(OTUs.active, method = "rank")
-MRS.active <- rowSums(abs(diff(OTUs.active.ranks))) / specnumber(OTUs.active.ranks[-nrow(OTUs.active.ranks),])
-points(MRS.active, type = 'l', col = 'red')
-
-MRS.total.ses <- (MRS.total - mean(total.null)) / sd(total.null)
-MRS.active.ses <- (MRS.active - mean(active.null)) / sd(active.null)
-matplot(cbind(MRS.total.ses, MRS.active.ses), type = 'l')
-
-plot(env.vars$temp[-123], MRS.total)
-plot(env.vars$temp[-123], MRS.active)
-
-plot(MRS.total, MRS.active)
-abline(0,1)
-```
-
-
-```{r}
-OTUs.total.persistent <- OTUs.ranked[,which(
-  colMeans(decostand(OTUs.ranked, method = "pa")) >= .9)]
-OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
-total.persistent <- as.data.frame(OTUs.total.persistent)
-active.persistent <- as.data.frame(OTUs.active.persistent)
-total.persistent$date <- env.data$date
-active.persistent$date <- env.data$date
-total.persistent %>%
-  gather(key = OTU, value = abundance, -date) %>% 
-  ggplot(aes(x = date, y = abundance, color = OTU)) + 
-  geom_line() +
-  scale_y_log10()
-active.persistent %>%
-  gather(key = OTU, value = abundance, -date) %>% 
-  ggplot(aes(x = date, y = abundance, color = OTU)) + 
-  geom_line() +
-  scale_y_log10()
-
-inactive <- which(colMeans(decostand(OTUs.active.persistent, method = 'pa')) < 1)
-matplot(OTUs.active.persistent[,inactive], type = 'l')
-
-
-calc.growth <- function(sbs, dates){
-  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
-  dt <- as.vector(diff(dates))
-  for(i in 1:(nrow(sbs)-1)){
-    y.s[i,] = (log(sbs[i+1,]) - log(sbs[i,])) / dt[i]
-  }
-  
-  return(y.s)
-}
-active.growths <- calc.growth(sbs = (OTUs.active.persistent + 1), dates = env.data$date)
-plot(active.growths[,2], type = 'l')
-max.growths <- apply(active.growths, MARGIN = 2, FUN = which.max)
-data.frame(date = month(env.data$date[max.growths], label = T)) %>% 
-  ggplot(aes(x = date)) + 
-  geom_bar()
-dim(active.growths)
-dim(OTUs.active.persistent[-1,])
-
-total.growths <- calc.growth(sbs = (OTUs.total.persistent + 1), dates = env.data$date)
-plot(total.growths[,2], type = 'l')
-max.growths <- apply(active.growths, MARGIN = 2, FUN = which.max)
-data.frame(date = month(env.data$date[max.growths], label = T)) %>% 
-  ggplot(aes(x = date)) + 
-  geom_bar()
-dim(active.growths)
-dim(OTUs.active.persistent[-1,])
+# shuffle.ts <- function(species.ts){
+#   species.ts[sample(1:length(species.ts))]
+# }
+# 
+# get.null.mrs <- function(comm, iters = 100){
+#   pb <- progress_bar$new(total = iters)
+#   mrs.null <- rep(NA, iters)
+#   for(i in 1:iters){
+#     nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+#     nullcom.ranks <- decostand(nullcom, method = "rank")
+#     S <- specnumber(nullcom.ranks[-nrow(nullcom.ranks),])
+#     nmrs <- rowSums(abs(diff(nullcom.ranks))) / S
+#     mrs.null[i] <- mean(nmrs)
+#     pb$tick()
+#   }
+#   return(mrs.null)
+# }
+# 
+# total.null <- get.null.mrs(OTUs.total)
+# active.null <- get.null.mrs(OTUs.active)
+# 
+# OTUs.total.ranks <- decostand(OTUs.total, method = "rank")
+# MRS.total <- rowSums(abs(diff(OTUs.total.ranks))) / specnumber(OTUs.total.ranks[-nrow(OTUs.total.ranks),])
+# plot(MRS.total, type = 'l')
+# 
+# OTUs.active.ranks <- decostand(OTUs.active, method = "rank")
+# MRS.active <- rowSums(abs(diff(OTUs.active.ranks))) / specnumber(OTUs.active.ranks[-nrow(OTUs.active.ranks),])
+# points(MRS.active, type = 'l', col = 'red')
+# 
+# MRS.total.ses <- (MRS.total - mean(total.null)) / sd(total.null)
+# MRS.active.ses <- (MRS.active - mean(active.null)) / sd(active.null)
+# matplot(cbind(MRS.total.ses, MRS.active.ses), type = 'l')
+# 
+# plot(env.vars$temp[-123], MRS.total)
+# plot(env.vars$temp[-123], MRS.active)
+# 
+# plot(MRS.total, MRS.active)
+# abline(0,1)
 ```
