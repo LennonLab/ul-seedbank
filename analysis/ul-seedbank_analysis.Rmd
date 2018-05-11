@@ -1193,3 +1193,48 @@ total.rda <- rda(OTUs.total, aem.eigs)
 # plot(MRS.total, MRS.active)
 # abline(0,1)
 ```
+
+```{r}
+maxgrowth <- function(sbs){
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = log(sbs[i+1,] / sbs[i,])
+  }
+  max.growth.time <- apply(y.s, 2, which.max)
+  max.growths <- apply(y.s, 2, max)
+  return(data.frame(
+    rate = max.growths, sample = max.growth.time))
+}
+
+env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
+env.dist <- daisy(scale(env.vars), metric = "gower")
+env.pca <- prcomp(na.omit(env.vars), scale. = T)
+
+env.pcs <- as.data.frame(env.pca$x) %>% rownames_to_column(var = "sample.id") 
+env.pcs$sample.id <- as.numeric(env.pcs$sample.id)
+env.pcs <- env.pcs %>% right_join(env.data)
+
+OTUs.total.persistent <- OTUs.total[,which(colMeans(OTUs.total.pa) > 0.9)]
+OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
+active.max.growths <- maxgrowth(OTUs.active.persistent + 1)
+active.max.growths <- active.max.growths %>% mutate(sample.id = sample)
+
+env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths)  
+
+library(ggrepel)
+ggplot() +
+  geom_jitter(data = env.pcs.subset, 
+              aes(x = PC1, y = PC2, size = rate, color = date),
+              alpha = 0.25) +
+  geom_segment(data = as.data.frame(env.pca$rotation),
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(.3, "cm")),
+               show.legend = F, alpha = 1, color = "blue") +
+  geom_label_repel(data = as.data.frame(env.pca$rotation), 
+            aes(x = PC1, y = PC2, label = rownames(env.pca$rotation)),
+            box.padding = .5, point.padding = .5, alpha = 0.9) +
+  scale_color_viridis() +
+  coord_fixed() +
+  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
+```
+
