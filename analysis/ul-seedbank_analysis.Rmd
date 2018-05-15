@@ -606,10 +606,10 @@ alpha.sync.active
 alpha.sync.total
 ```
 
-### Is temporal beta diversity driven by nestedness or turnover?
+### Explaining temporal beta diversity
 ```{r}
-active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
-total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
+#active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
+#total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
 
 samplingdays <- env.data$date
 time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
@@ -734,6 +734,84 @@ plot_grid(ddr.time + theme(legend.position = "none"),
           ddr.env + theme(legend.position = "none"), ncol = 2, align = 'hv', axis = 'l',
           labels = c("A", "B")) +
   ggsave(filename = "figures/ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
+
+
+
+intervals <- as.vector(diff.Date(samplingdays))
+w <- 1/(intervals/max(intervals))
+aem.out <- aem.time(n = length(samplingdays),
+                    w = w, moran = T,
+                    plot.moran = T)
+aem.eigs <- data.frame(aem.out$aem)
+aem.out$values
+colnames(aem.eigs) <- paste0("AEM",seq(1,ncol(aem.eigs)))
+
+env.preds <- na.omit(env.data[c("sample.id", "temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")])
+
+OTUs.rel.act.subs <- OTUs.REL.active[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
+aem.subs <- aem.eigs[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
+
+#active.varpar <- varpart(OTUs.rel.act.subs, env.preds)
+active.rda.0 <- rda(OTUs.rel.act.subs ~ 1, data = aem.subs)
+active.rda.1 <- rda(OTUs.rel.act.subs ~ ., data = aem.subs)
+active.rda.2 <- rda(OTUs.rel.act.subs ~ AEM2 + AEM4 + AEM5 + AEM6, data = aem.subs)
+active.rda <- ordiR2step(active.rda.0, scope = formula(active.rda.2), direction = "forward")
+
+active.rda.env.0 <- rda(OTUs.rel.act.subs ~ 1, data = env.preds)
+active.rda.env.1 <- rda(OTUs.rel.act.subs ~ ., data = env.preds)
+active.rda.env <- ordiR2step(active.rda.env.0, scope = formula(active.rda.env.1), direction = "forward")
+
+active.rda <- rda(OTUs.rel.act.subs ~ AEM5 + AEM4 + AEM6 + AEM2 + temp + doc + oxygen + spc + ph + secchi, data = cbind.data.frame(env.preds, aem.subs))
+
+active.rda.sum <- summary(active.rda)
+env.vecs <- cbind.data.frame(center = 0, active.rda.sum$biplot[,c(1:2)])
+spec.scores <- cbind.data.frame(center = 0, scores(active.rda)$species)
+site.scores <- as.data.frame(scores(active.rda)$sites)
+
+active.site.scores <- site.scores %>% rownames_to_column(var = "sample.name") %>% inner_join(design)
+active.spec.scores <- spec.scores[which(spec.scores$RDA1 > 0.25 | spec.scores$RDA2 > 0.25),] %>% 
+  rownames_to_column(var = "OTU") %>% inner_join(OTUs.tax)
+
+ggplot() + 
+  # Add site scores as points
+  # geom_point(data = site.scores, aes(x = RDA1, y = RDA2)) + 
+  geom_point(data = active.site.scores, 
+            aes(x = RDA1, y = RDA2, 
+                color = month(date, label = T, abbr = T))) + 
+  scale_color_viridis(discrete = T, "Month") +
+  
+  # Add species scores as red vectors
+  geom_segment(data = active.spec.scores, 
+               aes(x = center, y = center, xend = RDA1, yend = RDA2), 
+               alpha = 0.5, color = "black",
+             arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"), 
+             show.legend = F) + 
+  geom_label_repel(data = active.spec.scores, 
+               aes(x = RDA1, y = RDA2), 
+               label = active.spec.scores$Genus) + 
+
+  # Add environmental vectors in blue
+  geom_segment(data = env.vecs,
+             aes(x = center, y = center, xend = RDA1, yend = RDA2),
+             arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"),
+             show.legend = F, alpha = .5, color = "blue") +
+  geom_label_repel(data = env.vecs, aes(x = RDA1, y = RDA2),
+                    label = rownames(env.vecs), color = "blue", 
+                   segment.alpha = 0.3) + 
+  theme_cowplot() + 
+  coord_fixed() + 
+  ggsave("figures/rda_active_aem.pdf", bg = "white", height = 8, width = 8)
+
+
+OTUs.rel.tot.subs <- OTUs.REL.total[design$sample.id[which(design$sample.type == "DNA")] %in% env.preds$sample.id,]
+aem.subs <- aem.eigs[design$sample.id[which(design$sample.type == "DNA")] %in% env.preds$sample.id,]
+
+#active.varpar <- varpart(OTUs.rel.act.subs, env.preds)
+total.rda.0 <- rda(OTUs.rel.tot.subs ~ 1, data = aem.subs)
+total.rda.1 <- rda(OTUs.rel.tot.subs ~ ., data = aem.subs)
+total.rda.2 <- rda(OTUs.rel.tot.subs ~ AEM2 + AEM4 + AEM5 + AEM6, data = aem.subs)
+total.rda <- ordiR2step(active.rda.0, scope = formula(active.rda.2), direction = "forward")
+plot(active.rda)
 ```
 
 # Is negative frequency dependence disproportionately stronger on rare than common taxa?
@@ -1106,24 +1184,6 @@ subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
 # netwG1$Edges$List
 # pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
 # plot(pr1$recall, pr1$precision, type = 'l')
-
-```
-
-
-
-```{r}
-library(AEM)
-samplingdays <- env.data$date
-time.dist <- numeric(length(samplingdays))
-intervals <- as.vector(diff.Date(samplingdays))
-w <- 1/(intervals/max(intervals))
-aem.out <- aem.time(n = length(samplingdays),
-                    w = w, moran = T,
-                    plot.moran = T)
-aem.eigs <- aem.out$aem
-aem.out$values
-total.varpar <- varpart(OTUs.total, na.omit(env.vars), aem.eigs, transfo = "hellinger")
-total.rda <- rda(OTUs.total, aem.eigs)
 
 ```
 
