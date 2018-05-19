@@ -276,8 +276,8 @@ plots <- plot_grid(pc1.dyn + theme(legend.position = "none"),
           pc2.dyn + theme(legend.position = "none"), nrow = 2, align = 'hv', axis = 'l',
           labels = c("A", "B"))
 plots + ggsave(filename = "figures/pcoa_dynamics.pdf", width = 8, height = 8, units = "in")
-apply(total.traj, 2, cv)
-apply(active.traj, 2, cv)
+apply(total.traj, 2, sd)
+apply(active.traj, 2, sd)
 ```
 
 ### Ordinations (Presence-absence based)
@@ -610,8 +610,19 @@ alpha.sync.total
 
 ### Explaining temporal beta diversity
 ```{r}
-#active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
-#total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
+active.bd <- beta.div(OTUs.REL.active, nperm = 100, save.D = T, clock = T)
+active.bd$SCBD[active.bd$SCBD ]
+plot(env.data$temp, active.bd$LCBD)
+total.bd <- beta.div(OTUs.REL.total, nperm = 100, save.D = T, clock = T)
+plot(env.data$temp, total.bd$LCBD)
+plot(total.bd$LCBD, type = "o")
+total.bd$beta
+active.bd$beta
+plot(active.bd$SCBD, total.bd$SCBD)
+abline(a = 0, b = 1)
+
+active.comp <- beta.div.comp(OTUs.active, coef = "S", quant = T)
+total.comp <- beta.div.comp(OTUs.total, coef = "S", quant = T)
 
 samplingdays <- env.data$date
 time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
@@ -642,17 +653,23 @@ timeddr <- data.frame(total_repl = as.vector(total.comp$repl),
                       active_rich = as.vector(active.comp$rich),
            EnvDist = as.vector(env.dist), 
            Time = as.vector(time.dist))
-timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
-  geom_point(alpha = 0.1) +
-  geom_smooth(size = 2)
-timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+  geom_jitter(alpha = 0.1, size = 0.7) +
+  geom_smooth(size = 2) +
+  scale_y_continuous(limits = c(0,1))
+betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
-  geom_jitter(alpha = 0.1, shape = 16, size = 0.7) +
+  geom_jitter(alpha = 0.1, size = 0.7) +
   geom_smooth(size = 2) +
   ylab("Community Dissimilarity\n") + 
   xlab("Time lag (days)") +
   scale_y_continuous(limits = c(0,1))
+plot_grid(betapart.ddr.time + theme(legend.position = "none"), 
+          betapart.ddr.env + theme(legend.position = "none"), ncol = 2, align = 'hv', axis = 'l',
+          labels = c("A", "B")) +
+  ggsave(filename = "figures/betapart_ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
+
 
 # timeddr <- data.frame(Turnover = as.vector(OTUs.turn), 
 #            Nestedness = as.vector(OTUs.nest),
@@ -718,7 +735,6 @@ ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, 
   labs(y = "Community Dissimilarity", x = "Environmental Dissimilarity") +
   scale_color_manual(values = my.cols[c(4,2,1,3)]) +
   ggsave("figures/dissimilarity-by-env.pdf", bg = "white", height = 8, width = 8)
-ddr.env
 
 ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
@@ -730,7 +746,6 @@ ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist,
   scale_color_manual(values = my.cols[c(4,2,1,3)]) +
   #scale_y_log10() + 
   ggsave("figures/dissimilarity-by-time.pdf", bg = "white", height = 8, width = 8)
-ddr.time
 
 plot_grid(ddr.time + theme(legend.position = "none"), 
           ddr.env + theme(legend.position = "none"), ncol = 2, align = 'hv', axis = 'l',
@@ -1187,62 +1202,6 @@ subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
 
 
 ```{r}
-# library(cooccur)
-# 
-# 
-# 
-# active.cooccur <- cooccur(t(decostand(subset.active, method = "pa")), spp_names = TRUE)
-# summary(active.cooccur)
-# plot(active.cooccur)
-# active.coocur.pos <- active.cooccur$results %>% as_tibble() %>% 
-#   filter(p_lt < 0.05)
-# active.coocur.neg <- active.cooccur$results %>% as_tibble() %>% 
-#   filter(p_gt < 0.05)
-#   
-# # active.effects <- effect.sizes(active.cooccur)
-# # 
-# # active.attr <- pair.attributes(active.cooccur)
-# # active.attr %>% arrange(num_rand)
-# active.coocor.spec <- unique(unlist(active.coocur.pos[,1], active.coocur.pos[,2]))
-# small.subset <- OTUs.active[,active.coocor.spec]
-# library(G1DBN)
-# out1 <- DBNScoreStep1(data = small.subset, method = 'ls')
-# saveRDS(out1, file = "analysis/temp-results/DBNout1active.rda")
-# alpha1 = 0.5
-# edgesG1 <- BuildEdges(out1$S1ls, threshold = alpha1, 
-#                       targetNames = colnames(small.subset),
-#                       predNames = colnames(small.subset))
-# edgesG1
-# S2 <- DBNScoreStep2(out1$S1ls, data = small.subset, alpha1 = alpha1, method = 'ls')
-# alpha2 = 0.05
-# edgesG2 <- BuildEdges(score = S2, threshold = alpha2, 
-#                       targetNames = colnames(small.subset),
-#                       predNames = colnames(small.subset), prec = 6)
-# 
-# netwG1 <- BuildNetwork(edgesG1, Labels = colnames(small.subset))
-# netwG2 <- BuildNetwork(edgesG2, Labels = colnames(small.subset))
-# 
-# g2 <- graph.data.frame(netwG2$Edges$List, directed = T)
-# E(g2)$weight <- as.numeric(netwG2$Edges$List[,3])
-# l <- layout.fruchterman.reingold(g2, niter=5000)
-# plot(g2, layout = l, 
-#      edge.arrow.size = 0.5,
-#      vertex.label.cex = 0.5,
-#      vertex.label.font=2,
-#      vertex.label.font.family="helvetica",
-#      vertex.shape="circle", 
-#      vertex.size=1, 
-#      vertex.label.color="black", 
-#      edge.width=0.5)
-# 
-# netwG1$Edges$List
-# pr1 <- PRcurve(score = out1$S1ls, validMat = abs(netwG1$AdjMatrix)>0, dec = F)
-# plot(pr1$recall, pr1$precision, type = 'l')
-
-```
-
-
-```{r}
 # shuffle.ts <- function(species.ts){
 #   species.ts[sample(1:length(species.ts))]
 # }
@@ -1310,11 +1269,10 @@ active.max.growths <- active.max.growths %>% mutate(sample.id = sample)
 
 env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths)  
 
-library(ggrepel)
 ggplot() +
   geom_jitter(data = env.pcs.subset, 
-              aes(x = PC1, y = PC2, size = rate, color = date),
-              alpha = 0.25) +
+              aes(x = PC1, y = PC2, size = rate, color = month(date, label = T, abbr = T)),
+              alpha = 0.5) +
   geom_segment(data = as.data.frame(env.pca$rotation),
                aes(x = 0, y = 0, xend = PC1, yend = PC2),
                arrow = arrow(length = unit(.3, "cm")),
@@ -1322,7 +1280,7 @@ ggplot() +
   geom_label_repel(data = as.data.frame(env.pca$rotation), 
             aes(x = PC1, y = PC2, label = rownames(env.pca$rotation)),
             box.padding = .5, point.padding = .5, alpha = 0.9) +
-  scale_color_viridis() +
+  scale_color_viridis(discrete = T) +
   coord_fixed() +
   ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
 ```
