@@ -727,25 +727,27 @@ timeddr <- data.frame(Total = as.vector(OTUs.bray.tot),
            EnvDist = as.vector(env.dist), 
            Time = as.vector(time.dist))
 
-ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+ddr.env <- timeddr %>% select(-Seed.bank, -Transients) %>% 
+  gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = EnvDist, y = (Dissimilarity), color = Community)) + 
   geom_point(alpha = 0.1, shape = 16, size = 0.7) +
   geom_smooth(size = 2) +
   #scale_y_log10() +
   labs(y = "Community Dissimilarity", x = "Environmental Dissimilarity") +
-  scale_color_manual(values = my.cols[c(4,2,1,3)]) +
-  scale_y_continuous(limits = c(0,1.5)) +
+  scale_color_manual(values = my.cols[c(4,1)]) +
+  scale_y_continuous(limits = c(0.25,1.5)) +
   ggsave("figures/dissimilarity-by-env.pdf", bg = "white", height = 8, width = 8)
 
-ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+ddr.time <- timeddr %>% select(-Seed.bank, -Transients) %>% 
+  gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
   geom_vline(xintercept = 365*c(1,2), color = "grey", alpha = 0.5) +
   geom_jitter(alpha = 0.1, shape = 16, size = 0.7) +
   geom_smooth(size = 2) +
   ylab("Community Dissimilarity") + 
   xlab("Time lag (days)") +
-  scale_color_manual(values = my.cols[c(4,2,1,3)]) +
-  scale_y_continuous(limits = c(0,1.5)) +
+  scale_color_manual(values = my.cols[c(4,1)]) +
+  scale_y_continuous(limits = c(0.25,1.5)) +
   ggsave("figures/dissimilarity-by-time.pdf", bg = "white", height = 8, width = 8)
 
 plot_grid(ddr.time + theme(legend.position = "none"), 
@@ -778,16 +780,18 @@ active.rda.0 <- rda(OTUs.rel.act.subs ~ 1, data = aem.subs)
 # active.rda.env <- ordiR2step(active.rda.env.0, scope = formula(active.rda.env.1), direction = "forward")
 
 envfit(active.rda.0, aem.subs)
-
-active.rda <- rda(OTUs.rel.act.subs ~ AEM5 + AEM4 + AEM6 + AEM2 + temp + doc + oxygen + spc + ph + secchi, data = cbind.data.frame(env.preds, aem.subs))
+time.mod <- model.matrix(~ -1 + AEM5 + AEM4 + AEM6 + AEM2, data = aem.subs)
+env.mod <- model.matrix(~ temp + doc + oxygen + spc + ph, data = env.preds)
+active.rda <- rda(OTUs.rel.act.subs ~ env.mod + Condition(time.mod))
 
 active.rda.sum <- summary(active.rda)
 env.vecs <- cbind.data.frame(center = 0, active.rda.sum$biplot[,c(1:2)])
+rownames(env.vecs) <- c("Temp", "DOC", "DO", "SpC", "pH")
 spec.scores <- cbind.data.frame(center = 0, scores(active.rda)$species)
 site.scores <- as.data.frame(scores(active.rda)$sites)
 
 active.site.scores <- site.scores %>% rownames_to_column(var = "sample.name") %>% inner_join(design)
-active.spec.scores <- spec.scores[which(spec.scores$RDA1 > 0.25 | spec.scores$RDA2 > 0.25),] %>% 
+active.spec.scores <- spec.scores[which(abs(spec.scores$RDA1) > 0.1 | abs(spec.scores$RDA2) > 0.1),] %>% 
   rownames_to_column(var = "OTU") %>% inner_join(OTUs.tax)
 
 ggplot() + 
@@ -806,7 +810,7 @@ ggplot() +
              show.legend = F) + 
   geom_label_repel(data = active.spec.scores, 
                aes(x = RDA1, y = RDA2), 
-               label = active.spec.scores$Genus) + 
+               label = active.spec.scores$Class, label.padding = .3, alpha = 0.7) + 
 
   # Add environmental vectors in blue
   geom_segment(data = env.vecs,
@@ -815,7 +819,7 @@ ggplot() +
              show.legend = F, alpha = .5, color = "blue") +
   geom_label_repel(data = env.vecs, aes(x = RDA1, y = RDA2),
                     label = rownames(env.vecs), color = "blue", 
-                   segment.alpha = 0.3) + 
+                   segment.alpha = 0.3, alpha = 0.7) + 
   theme_cowplot() + 
   coord_fixed() + 
   ggsave("figures/rda_active_aem.pdf", bg = "white", height = 8, width = 8)
@@ -836,16 +840,18 @@ envfit(total.rda.0, aem.subs)
 # total.rda.env.0 <- rda(OTUs.rel.tot.subs ~ 1, data = env.preds)
 # total.rda.env.1 <- rda(OTUs.rel.tot.subs ~ ., data = env.preds)
 # total.rda.env <- ordiR2step(total.rda.env.0, scope = formula(total.rda.env.1), direction = "forward")
-
-total.rda <- rda(OTUs.rel.tot.subs ~ AEM1 + AEM2 + AEM4 + AEM5 + AEM6 + AEM10 + temp + doc + oxygen + spc + ph + secchi, data = cbind.data.frame(env.preds, aem.subs))
+time.mod <- model.matrix(~ -1 + AEM1 + AEM2 + AEM4 + AEM5 + AEM6 + AEM10, data = aem.subs)
+env.mod <- model.matrix(~ temp + doc + oxygen + spc + ph, data = env.preds)
+total.rda <- rda(OTUs.rel.tot.subs ~ env.mod + Condition(time.mod))
 
 total.rda.sum <- summary(total.rda)
 env.vecs <- cbind.data.frame(center = 0, total.rda.sum$biplot[,c(1:2)])
+rownames(env.vecs) <- c("Temp", "DOC", "DO", "SpC", "pH")
 spec.scores <- cbind.data.frame(center = 0, scores(total.rda)$species)
 site.scores <- as.data.frame(scores(total.rda)$sites)
 
 total.site.scores <- site.scores %>% rownames_to_column(var = "sample.name") %>% inner_join(design)
-total.spec.scores <- spec.scores[which(spec.scores$RDA1 > 0.25 | spec.scores$RDA2 > 0.25),] %>% 
+total.spec.scores <- spec.scores[which(abs(spec.scores$RDA1) > 0.1 | abs(spec.scores$RDA2) > 0.1),] %>% 
   rownames_to_column(var = "OTU") %>% inner_join(OTUs.tax)
 
 ggplot() + 
@@ -864,7 +870,7 @@ ggplot() +
              show.legend = F) + 
   geom_label_repel(data = total.spec.scores, 
                aes(x = RDA1, y = RDA2), 
-               label = total.spec.scores$Genus) + 
+               label = total.spec.scores$Class, label.padding = 0.3, alpha = 0.7) + 
 
   # Add environmental vectors in blue
   geom_segment(data = env.vecs,
@@ -873,10 +879,10 @@ ggplot() +
              show.legend = F, alpha = .5, color = "blue") +
   geom_label_repel(data = env.vecs, aes(x = RDA1, y = RDA2),
                     label = rownames(env.vecs), color = "blue", 
-                   segment.alpha = 0.3) + 
+                   segment.alpha = 0.3, alpha = 0.7) + 
   theme_cowplot() + 
   coord_fixed() + 
-  ggsave("figures/rda_total_aem.pdf", bg = "white", height = 8, width = 8)
+  ggsave("figures/rda_total_aem.pdf", bg = "white", height = 7, width = 7)
 
 aem.subs[,c(1,2,4,5,6,10)] %>% rownames_to_column(var = "Time") %>% gather(AEM, Evec, -Time) %>% 
   ggplot(aes(x = as.numeric(Time), y = Evec, color = AEM)) +
