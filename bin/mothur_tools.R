@@ -6,7 +6,8 @@
 #                                                                              #
 # Written by: Mario Muscarella                                                 #
 #                                                                              #
-# Last update: 2015/02/22                                                      #
+# Last update: 2019/01/04 by N. Wisnoski to drop reshape and work with stringr
+#  
 #                                                                              #
 ################################################################################
 #                                                                              #
@@ -22,12 +23,12 @@
 #         2. Add warnings                                                      #
 #                                                                              #
 ################################################################################
-
-require("reshape2")||install.packages("reshape2");require("reshape2")
+library("stringr")
+library("data.table")
 
 # Import OTU Site-by-Species Matrix
 read.otu <- function(shared = " ", cutoff = "0.03"){
-  matrix <- read.table(shared, header=T, fill=TRUE, comment.char="", sep="\t")
+  matrix <- fread(shared, header=T, fill=TRUE, sep="\t")
   matrix.cutoff <- subset(matrix, matrix$label == cutoff)
   matrix.out    <- as.matrix(matrix.cutoff[1:dim(matrix.cutoff)[1],
                                            4:(3+mean(matrix.cutoff$numOtus))])
@@ -39,8 +40,9 @@ read.otu <- function(shared = " ", cutoff = "0.03"){
 read.tax <- function(taxonomy = " ", format = "rdp"){
   tax_raw <- read.delim(taxonomy)                 # load genus-level data
   if (format == "rdp"){
-    tax <- cbind(OTU = tax_raw[,1],colsplit(tax_raw[,3], "\\;",
-               names=c("Domain","Phylum","Class","Order","Family","Genus")))
+    tax <- str_split_fixed(tax_raw[,3], pattern = "\\;", 6)
+    colnames(tax) <- c("Domain","Phylum","Class","Order","Family","Genus")
+    tax <- cbind.data.frame(OTU = tax_raw[,1], tax)
     for (i in 2:7){
       tax[,i] <- gsub("\\(.*$", "", tax[,i])
     }
