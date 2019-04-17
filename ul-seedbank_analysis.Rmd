@@ -8,9 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 # Load packages
 
-rm(list = ls())
 require(vegan)
-require(reshape2)
 require(tidyverse)
 require(lubridate)
 require(codyn)
@@ -23,23 +21,84 @@ require(cluster)
 require(adespatial)
 require(ggrepel)
 
+source("bin/mothur_tools.R")
+
 cv <- function(x){
   sd(x) / abs(mean(x))
 }
+
+set.seed(47405)
 ```
 
+Next, we'll set the aesthetics of the figures we will produce. 
+```{r figure_setup}
+my.cols <- RColorBrewer::brewer.pal(n = 4, name = "Greys")[3:4]
+
+# Set theme for figures in the paper
+theme_set(theme_classic() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.x = element_text(margin = margin(t = 15, b = 15)),
+        axis.title.y = element_text(margin = margin(l = 15, r = 15)),
+        axis.text = element_text(size = 14),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        #axis.line.x = element_line(size = 1),
+        #axis.line.y = element_line(size = 1),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x = element_line(size = 1),
+        axis.ticks.y = element_line(size = 1),
+        axis.ticks.length = unit(.1, "in"),
+        panel.border = element_rect(color = "black", fill = NA, size = 1.5),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14),
+        strip.background = element_blank()
+        ))
+```
+
+## Import Data
+Here, we read in the processed sequence files from mothur (shared and taxonomy) and a design of the sampling. We also load in the environmental data. We then remove the mock community from the dataset and ensure the the design and OTU table are aligned by row.
+```{r}
+# Define Inputs
+# Design = general design file for experiment
+# shared = OTU table from mothur with sequence similarity clustering
+# Taxonomy = Taxonomic information for each OTU
+design <- "data/UL_timeseries_design.csv"
+shared <- "data/ul_resgrad.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.pick.opti_mcc.shared"
+taxon  <- "data/ul_resgrad.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.pick.opti_mcc.0.03.cons.taxonomy"
+
+# Import Design
+design <- read_csv(file = design)
+
+# Import Shared Files
+OTUs <- read.otu(shared = shared, cutoff = "0.03")    # 97% Similarity
+
+# Import Taxonomy
+OTU.tax <- read.tax(taxonomy = taxon, format = "rdp")
+
+# Load environmental data
+env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
+env.data$date <- as.Date(parse_date_time(env.data$date, "m d y"))
+env.data$doc[which(env.data$doc == "**")] <- NA
+env.data$doc <- as.numeric(env.data$doc)
+summary(env.data)
+design <- left_join(design, env.data[,c("sample.id", "date")])
+env.data <- env.data[-which(!(env.data$date %in% design$date)),]
+
+# Subset to just the reservoir gradient sites
+OTUs <- OTUs[str_which(rownames(OTUs), "UL"),]
+
+# make sure OTU table matches up with design order
+OTUs <- OTUs[match(design$sample.name, rownames(OTUs)),]
+```
+
+# transform OTUs
 ```{r data format, include=FALSE}
-# Load data
-design <- read.csv(file = "data/design.csv")
-OTUs.tax <- readRDS(file = "data/Rdata/OTUtax.rda")
-# OTUs <- readRDS(file = "data/Rdata/OTUs.rda")
 
 # Make rel abund matrices and split into active total comms
 # OTUs <- OTUs[,-which(colSums(OTUs) < 5)]
-
-# OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
-# saveRDS(OTUs, file = "data/Rdata/OTUs_rarefied.rda")
-OTUs <- readRDS(file = "data/Rdata/OTUs_rarefied.rda")
+OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
 
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
@@ -52,14 +111,6 @@ OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 
-# read in environmental data
-env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
-env.data$date <- as.Date(parse_date_time(env.data$date, "m d y"))
-env.data$doc[which(env.data$doc == "**")] <- NA
-env.data$doc <- as.numeric(env.data$doc)
-summary(env.data)
-design <- left_join(design, env.data[,c("sample.id", "date")])
-env.data <- env.data[-which(!(env.data$date %in% design$date)),]
 
 # Define color pallette
 my.cols <- viridis(4, begin = .3, end = 0.8)
@@ -656,7 +707,7 @@ timeddr <- data.frame(total_repl = as.vector(total.comp$repl),
 betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
   geom_jitter(alpha = 0.1, size = 0.7) +
-  geom_smooth(size = 2) +
+  geom_smooth(size = 2, method = "lm") +
   scale_y_continuous(limits = c(0,1))
 betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
@@ -911,6 +962,26 @@ calc.neg.freq.dep <- function(sbs){
   return(na.omit(cbind.data.frame(eq.freq, fd)))
 }
 
+# using mean rel abund
+calc.neg.freq.dep <- function(sbs){
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = log(sbs[i+1,] / sbs[i,])
+  }
+  eq.freq <- vector(length = ncol(y.s))
+  fd <- vector(length = ncol(y.s))
+  sbs.rel <- decostand(sbs[-nrow(sbs),], method = "total")
+  for(i in 1:ncol(y.s)){
+    mod <- lm(y.s[,i] ~ sbs.rel[,i])
+    eq.freq[i] <- mean(sbs.rel[,i])
+    fd[i] <- coef(mod)[2]
+  }
+  # plot(log10(eq.freq), log10(-fd), 
+  #      ylab = "log10 Negative Freq. Dependence",
+  #      xlab = "log10 Equilibrium Frequency")
+  return(na.omit(cbind.data.frame(eq.freq, fd)))
+}
+
 shuffle.ts <- function(species.ts){
   species.ts[sample(1:length(species.ts))]
 }
@@ -932,15 +1003,16 @@ get.null.distr <- function(comm, iters = 5000){
 
 # separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.total[,which(
-  colMeans(decostand(OTUs, method = "pa")) >= 0.9)]
+  colMeans(decostand(OTUs, method = "pa")) >= .8)]
 OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
-(otu.thresh <- min(50, ncol(OTUs.total.persistent)))
+ncol(OTUs.total.persistent)
 
-OTUs.total.nozero <- OTUs.total.persistent[,1:otu.thresh] + 10^-10
+
+OTUs.total.nozero <- replace(OTUs.total.persistent, which(OTUs.total.persistent == 0), .5)
 nfd.total <- calc.neg.freq.dep(OTUs.total.nozero)
-nfd.total %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.total
+nfd.total %>% filter(-fd > 0) -> nfd.total
 nfd.total.cov <- cov(log(nfd.total$eq.freq), log(-nfd.total$fd))
 nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point() + 
@@ -950,9 +1022,9 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   ylab("Negative Frequency Dependence") + 
   xlab("Equilibrium Frequency")
 
-OTUs.active.nozero <- OTUs.active.persistent[,1:otu.thresh] + 10^-10
+OTUs.active.nozero <- replace(OTUs.active.persistent, which(OTUs.active.persistent == 0), .5)
 nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
-nfd.active %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0) -> nfd.active
+nfd.active %>% filter(-fd > 0) -> nfd.active
 nfd.active.cov <- cov(log(nfd.active$eq.freq), log(-nfd.active$fd))
 nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point() + 
@@ -991,15 +1063,16 @@ nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.n
                  cbind.data.frame(subset = "Active", nfd = act.nd)) 
 
 nfd.nulldists %>% 
-  ggplot(aes(y = nfd, x = subset, fill = subset)) + 
+  ggplot(aes(y = nfd, x = subset)) + 
   #geom_jitter(color = "grey", alpha = 0.1) + 
-  geom_violin(alpha = 0.5, show.legend = F) + 
+  geom_violin(alpha = 0.5, show.legend = F, fill = "grey") + 
   geom_point(data = nfd.obs, aes(x = subset, y = nfd), 
              color = "black", size = 5, show.legend = F) + 
-  scale_fill_manual(values = my.cols[c(1,4)]) +
+  #scale_fill_manual(values = my.cols[c(1,4)]) +
+  coord_flip() +
   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") + 
-  xlab("Community Subset") + 
-  ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 6, units = "in")
+  xlab("") + 
+  ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 4, units = "in")
 
 # Calculate standardized effect sizes
 nfd.summary <- nfd.nulldists %>% 
