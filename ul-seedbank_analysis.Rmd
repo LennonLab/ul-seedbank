@@ -236,29 +236,59 @@ data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.act
 # anova(sb.bdisp)
 # boxplot(sb.bdisp)
 
-OTUs.dist <- vegdist(OTUs.REL, method = "euclidean")
-OTUs.pcoa <- cmdscale(OTUs.dist, eig = T)
-var1 <- round(eigenvals(OTUs.pcoa)[1] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-var2 <- round(eigenvals(OTUs.pcoa)[2] / sum(eigenvals(OTUs.pcoa)), 3) * 100
-OTUs.traj <- OTUs.pcoa$points
-colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
-active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
-total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
+active.pca <- rda(OTUs.REL.active)
+
+# 
+# OTUs.dist <- vegdist(OTUs.REL, method = "euclidean")
+# OTUs.pcoa <- cmdscale(OTUs.dist, eig = T)
+var1 <- round(eigenvals(active.pca)[1] / sum(eigenvals(active.pca)) * 100, 2)
+var2 <- round(eigenvals(active.pca)[2] / sum(eigenvals(active.pca)) * 100, 2)
+
+# OTUs.traj <- OTUs.pcoa$points
+# colnames(OTUs.traj) <- c("Comp.1", "Comp.2")
+# active.traj <- OTUs.traj[which(design$sample.type == "RNA"),]
+# total.traj <- OTUs.traj[which(design$sample.type == "DNA"),]
 
 active.traj.df <- cbind.data.frame(
-  sample.id = design$sample.id[which(design$sample.type == "RNA")], active.traj) 
+  sample.id = design$sample.id[which(design$sample.type == "RNA")], 
+  as.data.frame(scores(active.pca, display = "sites"))) 
+
+active.spec.scores.pc <- as.data.frame(scores(active.pca, display = "species")) %>% rownames_to_column(var = "OTU") %>% 
+  filter(PC1 > .2 | PC2 > .2) %>% 
+  left_join(OTU.tax)
+stringr::str_split(active.spec.scores.pc$Family, "_")
+
+scale.arrows <- 1
 
 full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
-  ggplot(aes(x = Comp.1, y = Comp.2)) + 
+  ggplot(aes(x = PC1, y = PC2)) + 
+  geom_hline(aes(yintercept = 0), alpha = 0.1) + 
+  geom_vline(aes(xintercept = 0), alpha = 0.1) +
   stat_ellipse(aes(color = lubridate::month(date, label = T)), alpha = 0.5) +
   geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                   ends = "last", type = "closed")) + 
   geom_point(aes(color = lubridate::month(date, label = T)), alpha = 0.8, size = 2) +
   scale_color_viridis_d("") + 
-  xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-  ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
+  geom_segment(data = active.spec.scores.pc, 
+               aes(x = 0, y = 0, 
+                   xend = scale.arrows*PC1, 
+                   yend = scale.arrows*PC2), 
+               alpha = 0.5, color = "black",
+               arrow = arrow(
+                 angle = 20, 
+                 length = unit(.1, "inches"), 
+                 type = "open"), 
+             show.legend = F) + 
+  geom_text_repel(data = active.spec.scores.pc,
+                   aes(x = scale.arrows*PC1, 
+                       y = scale.arrows*PC2),
+                   label = active.spec.scores.pc$Family,
+                   label.padding = .3, alpha = 0.7) +
+  xlab(paste("PC 1 (",var1,"%)", sep = "")) + 
+  ylab(paste("PC 2 (",var2,"%)", sep = "")) +
   coord_fixed() +
   scale_x_continuous(limits = c(-.7, .7)) +
+  scale_y_continuous(limits = c(-1, 1)) +
   ggsave("figures/active_trajectory.pdf", bg = "white", height = 6, width = 8) +
   ggsave("figures/active_trajectory.png", bg = "white", height = 6, width = 8, dpi = 600)
 
@@ -496,7 +526,7 @@ nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
 
 
 # Generate null distributions
-iternum <- 1000
+iternum <- 5000
 tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
 
@@ -645,8 +675,11 @@ calc.score <- function(species){
 
 reappearance.score <- function(DNA, RNA){
   
-  otu.diff <- decostand(DNA, method = "pa") - 
-    decostand(RNA, method = "pa")
+  
+  otu.dna.pa <- decostand(DNA, method = "pa")
+  otu.rna.pa <- decostand(RNA, method = "pa")
+  otu.diff <- otu.dna.pa - otu.rna.pa
+    
   otuscores <- vector(length = ncol(otu.diff))
   
   # for each OTU in the difference OTU matrix
@@ -659,7 +692,9 @@ reappearance.score <- function(DNA, RNA){
     for(i in 1:(nrow(otu.diff)-1)){
       
       # each time an OTU reappears, score it 1
-      if(otu.diff[i, j] == 0 & otu.diff[i+1, j] == 1){
+      if(otu.rna.pa[i, j] == 0 & # absent from RNA at i
+         otu.dna.pa[i, j] == 1 & # present in DNA at i
+         otu.rna.pa[i+1, j] == 1){ # present again in RNA
         otuscore <- otuscore + 1
       }
     }
