@@ -256,7 +256,13 @@ active.traj.df <- cbind.data.frame(
 active.spec.scores.pc <- as.data.frame(scores(active.pca, display = "species")) %>% rownames_to_column(var = "OTU") %>% 
   filter(PC1 > .2 | PC2 > .2) %>% 
   left_join(OTU.tax)
-stringr::str_split(active.spec.scores.pc$Family, "_")
+familynames <- stringr::str_split(active.spec.scores.pc$Family, "_")
+fam.name.vec <- vector(length = length(active.spec.scores.pc$Family))
+for(i in 1:length(active.spec.scores.pc$Family)){
+  thisfamily <- familynames[[i]]
+  fam.name.vec[i] <- paste(thisfamily[1], "sp.")
+} 
+active.spec.scores.pc$name <- fam.name.vec
 
 scale.arrows <- 1
 
@@ -265,7 +271,7 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   geom_hline(aes(yintercept = 0), alpha = 0.1) + 
   geom_vline(aes(xintercept = 0), alpha = 0.1) +
   stat_ellipse(aes(color = lubridate::month(date, label = T)), alpha = 0.5) +
-  geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+  geom_path(alpha = 0.8, arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                   ends = "last", type = "closed")) + 
   geom_point(aes(color = lubridate::month(date, label = T)), alpha = 0.8, size = 2) +
   scale_color_viridis_d("") + 
@@ -273,7 +279,9 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
                aes(x = 0, y = 0, 
                    xend = scale.arrows*PC1, 
                    yend = scale.arrows*PC2), 
-               alpha = 0.5, color = "black",
+               alpha = 0.8, 
+               size = 1,
+               color = "black",
                arrow = arrow(
                  angle = 20, 
                  length = unit(.1, "inches"), 
@@ -282,13 +290,15 @@ full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
   geom_text_repel(data = active.spec.scores.pc,
                    aes(x = scale.arrows*PC1, 
                        y = scale.arrows*PC2),
-                   label = active.spec.scores.pc$Family,
+                   label = active.spec.scores.pc$name,
+                   nudge_x = c(-.2, .4, .5, .4),
+                   nudge_y = c(.3, 0, .2, .1),
                    label.padding = .3, alpha = 0.7) +
   xlab(paste("PC 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PC 2 (",var2,"%)", sep = "")) +
   coord_fixed() +
-  scale_x_continuous(limits = c(-.7, .7)) +
-  scale_y_continuous(limits = c(-1, 1)) +
+  scale_x_continuous(limits = c(-.7, 1)) +
+  scale_y_continuous(limits = c(-.7, 1)) +
   ggsave("figures/active_trajectory.pdf", bg = "white", height = 6, width = 8) +
   ggsave("figures/active_trajectory.png", bg = "white", height = 6, width = 8, dpi = 600)
 
@@ -816,28 +826,27 @@ subset(OTUs.tax, OTU %in% seedbank.taxa$OTU)
 
 # Taxa Time Relationship
 ```{r}
-ttr.calc <- function(comm){
-  comm.pa <- decostand(comm, method = 'pa')
-  weeknum <- 1:nrow(comm.pa)
-  otusum <- numeric(nrow(comm.pa))
-  for(week in weeknum){
-    otusum[week] <- ifelse(week > 1, sum(colSums(comm.pa[1:week,]) > 0), 
-                           sum(comm.pa[1,]))
-  }
-  return(cbind.data.frame(week = weeknum, taxa = otusum))
-}
-
-active.ttr <- ttr.calc(OTUs.active)
-total.ttr <- ttr.calc(OTUs.total)
-transient.ttr <- ttr.calc(transients)
-
-ttrs <- rbind.data.frame(cbind.data.frame(subset = "active", active.ttr),
-                 cbind.data.frame(subset = "total", total.ttr),
-                 cbind.data.frame(subset = "transients", transient.ttr))
-ttrs %>% 
-  ggplot(aes(x = week, y = taxa, color = subset)) + 
-  geom_line(size = 2) + 
-  ggsave("figures/taxa_time_relationships.pdf", bg = "white", height = 8, width = 8)
+# ttr.calc <- function(comm){
+#   comm.pa <- decostand(comm, method = 'pa')
+#   weeknum <- 1:nrow(comm.pa)
+#   otusum <- numeric(nrow(comm.pa))
+#   for(week in weeknum){
+#     otusum[week] <- ifelse(week > 1, sum(colSums(comm.pa[1:week,]) > 0), 
+#                            sum(comm.pa[1,]))
+#   }
+#   return(cbind.data.frame(week = weeknum, taxa = otusum))
+# }
+# 
+# active.ttr <- ttr.calc(OTUs.active)
+# total.ttr <- ttr.calc(OTUs.total)
+# 
+# ttrs <- rbind.data.frame(cbind.data.frame(
+#   subset = "active", active.ttr),
+#                  cbind.data.frame(subset = "total", total.ttr))
+# ttrs %>% 
+#   ggplot(aes(x = week, y = taxa, color = subset)) + 
+#   geom_line(size = 2) + 
+#   ggsave("figures/taxa_time_relationships.pdf", bg = "white", height = 8, width = 8)
 ```
 
 # Conditionally Rare Taxa
@@ -860,12 +869,19 @@ hist(activeCRTs)
 hist(totalCRTs)
 
 
-candidateCRTs <- names(activeCRTs[which(activeCRTs > 0.9)])
+candidateCRTs <- names(activeCRTs[which(activeCRTs > 0.6)])
 candidateCRTs <- OTUs.REL.active[,candidateCRTs]
 candidateCRTs <- candidateCRTs[,apply(candidateCRTs, 2, max) > 0.01]
 matplot(candidateCRTs, type = 'l')
-subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
-
+subset(OTU.tax, OTU %in% colnames(candidateCRTs))
+as.data.frame(candidateCRTs) %>% 
+  rownames_to_column(var = "sample.name") %>% 
+  left_join(design) %>% 
+  gather(-sample.name, -sample.id, -sample.type, -date, 
+         key = "OTU", value = "abundance") %>% 
+  left_join(OTU.tax) %>% 
+  ggplot(aes(x = date, y = abundance, color = Genus)) + 
+  geom_line()
 
 ```
 
@@ -913,44 +929,111 @@ subset(OTUs.tax, OTU %in% colnames(candidateCRTs))
 
 ```{r}
 maxgrowth <- function(sbs){
+  
+  # create new matrix to calculate growth rates
   y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
   for(i in 1:(nrow(sbs)-1)){
     y.s[i,] = log(sbs[i+1,] / sbs[i,])
   }
+  
+  # for the gr's just calculated (ys) where is the max
+  # for each OTU (i.e., each col) in the matrix
   max.growth.time <- apply(y.s, 2, which.max)
+  
+  # now, what is the gr at that max id'ed above
   max.growths <- apply(y.s, 2, max)
+  
+  # here, export a df of max gr and time of max gr for each OTU in the input df
   return(data.frame(
     rate = max.growths, sample = max.growth.time))
 }
 
 env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
-env.dist <- daisy(scale(env.vars), metric = "gower")
+env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
 env.pca <- prcomp(na.omit(env.vars), scale. = T)
 
 env.pcs <- as.data.frame(env.pca$x) %>% rownames_to_column(var = "sample.id") 
 env.pcs$sample.id <- as.numeric(env.pcs$sample.id)
 env.pcs <- env.pcs %>% right_join(env.data)
 
-OTUs.total.persistent <- OTUs.total[,which(colMeans(OTUs.total.pa) > 0.9)]
-OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
-active.max.growths <- maxgrowth(OTUs.active.persistent + 1)
+active.max.growths <- maxgrowth(OTUs.active.persistent + .1)
+active.max.growths$OTU <- colnames(OTUs.active.persistent)
 active.max.growths <- active.max.growths %>% mutate(sample.id = sample)
 
-env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths)  
+env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths) %>%
+  left_join(OTU.tax)
 
-ggplot() +
-  geom_jitter(data = env.pcs.subset, 
-              aes(x = PC1, y = PC2, size = rate, color = month(date, label = T, abbr = T)),
-              alpha = 0.5) +
+env.pcs.subset %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_jitter(aes(
+    color = lubridate::month(date, label = T, abbr = T)), 
+    alpha = 0.5, width = .25, height = .25, size = 2) +
+  #geom_text_repel(aes(label = Order), size = 3) +
   geom_segment(data = as.data.frame(env.pca$rotation),
-               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               aes(x = 0, y = 0, xend = 3*PC1, yend = 3*PC2),
                arrow = arrow(length = unit(.3, "cm")),
                show.legend = F, alpha = 1, color = "blue") +
-  geom_label_repel(data = as.data.frame(env.pca$rotation), 
-            aes(x = PC1, y = PC2, label = rownames(env.pca$rotation)),
-            box.padding = .5, point.padding = .5, alpha = 0.9) +
+  geom_text_repel(data = as.data.frame(env.pca$rotation), 
+            aes(x = 3*PC1, y = 3*PC2, label = rownames(env.pca$rotation)),
+            box.padding = .5, point.padding = .5, alpha = 0.9, segment.alpha = 0) +
   scale_color_viridis(discrete = T) +
   coord_fixed() +
-  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
+  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8) +
+  ggsave("figures/max_growth_envs.png", bg = "white", width = 8, height = 8, dpi = 600)
+
+
+getgrs <-  function(sbs){
+  # create new matrix to calculate growth rates
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = log(sbs[i+1,] / sbs[i,])
+  }
+  return(y.s)
+}
+persistent.grs <- getgrs(OTUs.active.persistent + .1)
+colnames(persistent.grs) <- colnames(OTUs.active.persistent)
+rownames(persistent.grs) <- rownames(OTUs.active.persistent)[-1]
+
+
+persistent.grs.all <- as.data.frame(persistent.grs) %>% 
+  rownames_to_column(var = "sample.name") %>% 
+  gather(-"sample.name", key = "OTU", value = "growth") %>% 
+  left_join(design) %>% 
+  mutate(week = lubridate::week(date)) %>% 
+  group_by(OTU, week) %>% 
+  summarize(mean.growth = mean(growth),
+            sd.growth = sd(growth))
+maxgrs <- persistent.grs.max.only %>% 
+  summarize(max.growth = max(mean.growth))
+
+persistent.grs.all <- persistent.grs.all %>% 
+  left_join(maxgrs) %>%
+  left_join(OTU.tax)
+# persistent.grs.all <- as.data.frame(persistent.grs) %>% 
+#   rownames_to_column(var = "sample.name") %>% 
+#   gather(-"sample.name", key = "OTU", value = "growth") %>% 
+#   left_join(design) %>% 
+#   left_join(OTU.tax)
+
+persistent.grs.all <- persistent.grs.all %>% 
+  mutate(ismax = ifelse(mean.growth == max.growth, T, F))
+persistent.grs.all %>%   
+  ggplot(aes(x = week, col = OTU)) +
+  geom_line(aes(y = mean.growth), alpha = 0.2) + 
+  geom_point(data = subset(persistent.grs.all, ismax == T), 
+             aes(y = max.growth), alpha = 0.8, size = 3) + 
+  coord_flip() + 
+  geom_ribbon(aes(ymax = 0, ymin = -8), 
+              fill = "white", col = "white", alpha = 0.7) +
+  theme(legend.position = "none") +
+  geom_text_repel(data = subset(persistent.grs.all, ismax == T),
+            aes(y = max.growth, label = Genus), 
+            nudge_y = 6, box.padding = .5, segment.alpha = .5) +
+  labs(x = "Week of the year", 
+       y = expression(Mean~growth~rate~(wk^-1))) +
+  scale_y_continuous(limits = c(-8, 12)) +
+   ggsave("figures/max_growth_date.pdf", bg = "white", width = 12, height = 18)
+  # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
+
 ```
 
