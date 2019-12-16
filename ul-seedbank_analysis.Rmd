@@ -433,7 +433,6 @@ ggplot() +
   geom_text_repel(data = env.vecs, aes(x = RDA1, y = RDA2),
                     label = rownames(env.vecs), color = "blue", 
                    segment.alpha = 0.3, alpha = 0.7) + 
-  theme_cowplot() + 
   coord_fixed() + 
   ggsave("figures/rda_active_aem.pdf", bg = "white", height = 10, width = 10) + 
   ggsave("figures/rda_active_aem.png", bg = "white", height = 10, width = 10, dpi = 600)
