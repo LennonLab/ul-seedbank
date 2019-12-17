@@ -11,7 +11,6 @@ output: html_document
 require(vegan)
 require(tidyverse)
 require(lubridate)
-require(codyn)
 require(viridis)
 require(betapart)
 require(cowplot)
@@ -20,6 +19,7 @@ require(progress)
 #require(cluster)
 require(adespatial)
 require(ggrepel)
+require(colorspace)
 
 source("bin/mothur_tools.R")
 
@@ -1002,7 +1002,7 @@ persistent.grs.all <- as.data.frame(persistent.grs) %>%
   group_by(OTU, week) %>% 
   summarize(mean.growth = mean(growth),
             sd.growth = sd(growth))
-maxgrs <- persistent.grs.max.only %>% 
+maxgrs <- persistent.grs.all %>% 
   summarize(max.growth = max(mean.growth))
 
 persistent.grs.all <- persistent.grs.all %>% 
@@ -1016,23 +1016,28 @@ persistent.grs.all <- persistent.grs.all %>%
 
 persistent.grs.all <- persistent.grs.all %>% 
   mutate(ismax = ifelse(mean.growth == max.growth, T, F))
+
+persistent.grs.all$Genus <- str_replace(persistent.grs.all$Genus, coll("_unclassified"), " sp.")
 persistent.grs.all %>%   
-  ggplot(aes(x = week, col = OTU)) +
+  ggplot(aes(x = week, group = OTU, col = Phylum)) +
   geom_line(aes(y = mean.growth), alpha = 0.2) + 
   geom_point(data = subset(persistent.grs.all, ismax == T), 
              aes(y = max.growth), alpha = 0.8, size = 3) + 
-  coord_flip() + 
-  geom_ribbon(aes(ymax = 0, ymin = -8), 
-              fill = "white", col = "white", alpha = 0.7) +
-  theme(legend.position = "none") +
+  #coord_flip() + 
+  geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -3), 
+              fill = "white", col = "white", alpha = 0.5) +
+  theme(legend.position = "bottom", legend.text = element_text(size = 9)) +
   geom_text_repel(data = subset(persistent.grs.all, ismax == T),
             aes(y = max.growth, label = Genus), 
-            nudge_y = 6, box.padding = .5, segment.alpha = .5) +
+            nudge_y = 0, box.padding = .5, max.iter = 10000,
+            size = 2, color = "black", segment.alpha = .5) +
   labs(x = "Week of the year", 
        y = expression(Mean~growth~rate~(wk^-1))) +
-  scale_y_continuous(limits = c(-8, 12)) +
-   ggsave("figures/max_growth_date.pdf", bg = "white", width = 12, height = 18)
+  scale_color_discrete_qualitative(palette = "Dynamic") +
+  #scale_y_continuous(limits = c(-5, 12)) +
+   ggsave("figures/max_growth_date.pdf", bg = "white", width = 8, height = 8*3/4)
   # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
+
 
 ```
 
