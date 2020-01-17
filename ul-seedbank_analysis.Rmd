@@ -103,7 +103,7 @@ OTUs <- rrarefy(OTUs, sample = min(rowSums(OTUs)))
 
 OTUs.active <- OTUs[which(design$sample.type == "RNA"),]
 OTUs.total <- OTUs[which(design$sample.type == "DNA"),]
-OTUs.total <- decostand(OTUs.active, method = "pa") + OTUs.total
+OTUs.total <- OTUs.total + decostand(OTUs.active, method = "pa")
 OTUs.total.pa <- decostand(OTUs.total, method = "pa")
 OTUs.active.pa <- decostand(OTUs.active, method = "pa")
 
@@ -499,10 +499,14 @@ get.null.distr <- function(comm, iters = 5000){
 }
 
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
-
+env.data %>% ggplot(aes(x = date, y = temp)) + 
+  geom_point() + 
+  geom_line() +
+  scale_x_date(breaks = "month") +
+  coord_flip()
 # separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.total[,which(
-  colMeans(decostand(OTUs, method = "pa")) >= .8)]
+  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
 OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
@@ -535,7 +539,7 @@ nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
 
 
 # Generate null distributions
-iternum <- 5000
+iternum <- 1000
 tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
 
@@ -581,6 +585,109 @@ nfd.summary <- nfd.nulldists %>%
   mutate(nfd.strength = nfd / mean.nfd)
 nfd.summary
 ```
+
+```{r}
+env.data %>% ggplot(aes(x = date, y = temp)) +
+  geom_point() +
+  geom_line() +
+  scale_x_date(breaks = "month") +
+  coord_flip()
+
+# separate OTUs present across the nearly whole time series
+index.summer.2013 <- design %>%
+  filter(sample.type == "DNA") %>%
+  filter(month(date) >= 5 & month(date) <=10) %>%
+  filter(year(date) == 2013) %>% .$sample.name
+
+index.summer.2014 <- design %>%
+  filter(sample.type == "DNA") %>%
+  filter(month(date) >= 5 & month(date) <=10) %>%
+  filter(year(date) == 2014) %>% .$sample.name
+
+index.summer.2015 <- design %>%
+  filter(sample.type == "DNA") %>%
+  filter(month(date) >= 5 & month(date) <=10) %>%
+  filter(year(date) == 2015) %>% .$sample.name
+
+OTUs.total.persistent.summer2013 <- OTUs.total[index.summer.2015,which(
+  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
+OTUs.active.persistent.summer2013 <- OTUs.active[,colnames(OTUs.total.persistent.summer2013)]
+
+# How many taxa to consider?
+ncol(OTUs.total.persistent.summer2013)
+
+
+OTUs.total.nozero.summer2013 <- replace(OTUs.total.persistent.summer2013, which(OTUs.total.persistent.summer2013 == 0), .5)
+nfd.total.summer2013 <- calc.neg.freq.dep(OTUs.total.nozero.summer2013)
+nfd.total.summer2013 %>% filter(-fd > 0) -> nfd.total.summer2013
+nfd.total.cov.summer2013 <- cov(log(nfd.total.summer2013$eq.freq), log(-nfd.total.summer2013$fd))
+nfd.total.summer2013 %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point() +
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_smooth(method = "lm") +
+  ylab("Negative Frequency Dependence") +
+  xlab("Equilibrium Frequency")
+
+OTUs.active.nozero.summer2013 <- replace(OTUs.active.persistent.summer2013, which(OTUs.active.persistent.summer2013 == 0), .5)
+nfd.active.summer2013 <- calc.neg.freq.dep(OTUs.active.nozero.summer2013)
+nfd.active.summer2013 %>% filter(-fd > 0) -> nfd.active.summer2013
+nfd.active.cov.summer2013 <- cov(log(nfd.active.summer2013$eq.freq), log(-nfd.active.summer2013$fd))
+nfd.active.summer2013 %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point() +
+  scale_y_log10() +
+  scale_x_log10() +
+  geom_smooth(method = "lm") +
+  ylab("Negative Frequency Dependence") +
+  xlab("Equilibrium Frequency")
+
+
+# Generate null distributions
+iternum <- 1000
+tot.nd.summer2013 <- get.null.distr(comm = OTUs.total.nozero.summer2013, iters = iternum)
+act.nd.summer2013 <- get.null.distr(comm = OTUs.active.nozero.summer2013, iters = iternum)
+
+# Compare observed with null
+hist(tot.nd.summer2013, breaks = 20); abline(v = nfd.total.cov.summer2013, col = "red")
+(tot.nfd.pval.summer2013 <- rank(c(nfd.total.cov.summer2013, tot.nd.summer2013))[1] / length(c(nfd.total.cov.summer2013, tot.nd.summer2013)))
+hist(act.nd.summer2013, breaks = 20); abline(v = nfd.active.cov.summer2013, col = "red")
+(act.nfd.pval.summer2013 <- rank(c(nfd.active.cov.summer2013, act.nd.summer2013))[1] / length(c(nfd.active.cov.summer2013, act.nd.summer2013)))
+# hist(sb.nd, breaks = 20); abline(v = nfd.sb.cov, col = "red")
+# (sb.nfd.pval <- rank(c(nfd.sb.cov, sb.nd))[1] / length(c(nfd.sb.cov, sb.nd)))
+
+# nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
+#                  cbind.data.frame(subset = "Active", nfd = nfd.active.cov),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = nfd.sb.cov))
+#
+# nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
+#                  cbind.data.frame(subset = "Active", nfd = act.nd),
+#                  cbind.data.frame(subset = "Seed Bank", nfd = sb.nd))
+
+nfd.obs.summer2013 <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov.summer2013),
+                 cbind.data.frame(subset = "Active", nfd = nfd.active.cov.summer2013))
+
+nfd.nulldists.summer2013 <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd.summer2013),
+                 cbind.data.frame(subset = "Active", nfd = act.nd.summer2013))
+
+nfd.nulldists.summer2013 %>%
+  ggplot(aes(y = nfd, x = subset)) +
+  #geom_jitter(color = "grey", alpha = 0.1) +
+  geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
+  geom_point(data = nfd.obs.summer2013, aes(x = subset, y = nfd),
+             color = "black", size = 5, show.legend = F) +
+  scale_fill_manual(values = my.cols[c(1,4)]) +
+  coord_flip() +
+  ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
+  xlab("")
+
+# Calculate standardized effect sizes
+nfd.summary.summer2013 <- nfd.nulldists.summer2013 %>%
+  group_by(subset) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
+  left_join(nfd.obs.summer2013) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
+  mutate(nfd.strength = nfd / mean.nfd)
+nfd.summary.summer2013
+```
+
 
 ```{r}
 # What is the effect of taxa number on response
