@@ -1163,7 +1163,7 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   ylab("Number of activations from seed bank") +
   xlab("Average relative abundance in total community") +
   scale_x_log10() 
-  ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
+  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
 
 cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
@@ -1184,7 +1184,7 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   ylab("Number of activations from seed bank") +
   xlab("Average relative abundance in active community") +
   scale_x_log10()
-  ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
+  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
 
 cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
@@ -1202,15 +1202,15 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   gather(relabund_active, relabund_total, key = "subset", value = "relabund") %>% 
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
   filter(subset == "Active Portion") %>% 
-  ggplot(aes(y = times_activated, x = relabund, linetype = seedbank)) + 
+  ggplot(aes(y = times_activated, x = relabund)) + 
   geom_jitter(size = 3, alpha = 0.5) + 
-  geom_smooth(color = "black") + 
+  geom_smooth(color = "black", span = 1) + 
   #facet_wrap(~subset, ncol = 1) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
   scale_x_log10() +
-  ggsave("figures/rarity_activations.png", width = 6, height = 3/4*6, dpi = 600)
+  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6)
   
   
 
@@ -1378,8 +1378,7 @@ env.pcs.subset %>%
             box.padding = .5, point.padding = .5, alpha = 0.9, segment.alpha = 0) +
   scale_color_viridis(discrete = T) +
   coord_fixed() +
-  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8) +
-  ggsave("figures/max_growth_envs.png", bg = "white", width = 8, height = 8, dpi = 600)
+  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
 
 
 getgrs <-  function(sbs){
@@ -1416,29 +1415,45 @@ persistent.grs.all <- persistent.grs.all %>%
 #   left_join(OTU.tax)
 
 persistent.grs.all <- persistent.grs.all %>% 
-  mutate(ismax = ifelse(mean.growth == max.growth, T, F))
+  mutate(ismax = ifelse(mean.growth == max.growth, T, F)) 
 
+# this normalizes to jan 1 of each year for the avg growth rates.
+persistent.grs.all$date <- lubridate::parse_date_time(paste(2014, persistent.grs.all$week, 'Wed', sep="/"),'Y/W/a') %>% as_date(.) %>% - 7
 persistent.grs.all$Genus <- str_replace(persistent.grs.all$Genus, coll("_unclassified"), " sp.")
+
 persistent.grs.all %>%   
-  ggplot(aes(x = week, group = OTU, col = Phylum)) +
-  geom_line(aes(y = mean.growth), alpha = 0.2) + 
+  ggplot(aes(x = date, group = OTU)) +
+  geom_line(aes(y = mean.growth), alpha = 0.1) + 
   geom_point(data = subset(persistent.grs.all, ismax == T), 
-             aes(y = max.growth), alpha = 0.8, size = 3) + 
+             aes(y = max.growth), alpha = 0.5, size = 3) + 
   #coord_flip() + 
-  geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -3), 
+  geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -5), 
               fill = "white", col = "white", alpha = 0.5) +
   theme(legend.position = "bottom", legend.text = element_text(size = 9)) +
-  geom_text_repel(data = subset(persistent.grs.all, ismax == T),
-            aes(y = max.growth, label = Genus), 
-            nudge_y = 0, box.padding = .5, max.iter = 10000,
-            size = 2, color = "black", segment.alpha = .5) +
+  # geom_text_repel(data = subset(persistent.grs.all, ismax == T),
+  #           aes(y = max.growth, label = Genus), 
+  #           nudge_y = 0, box.padding = .5, max.iter = 10000,
+  #           size = 2, color = "black", segment.alpha = .5) +
+  labs(x = "", 
+       y = expression(Mean~growth~rate~(wk^-1))) +
+  scale_color_discrete_qualitative(palette = "Dynamic") +
+  scale_x_date(date_labels = "%b", breaks = "1 month") +
+  coord_polar(theta = "x") +
+  theme_minimal() +
+  #scale_y_continuous(limits = c(-5, 12)) +
+   ggsave("figures/fig2.pdf", bg = "white", width = 8, height = 8*3/4)
+  # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
+
+persistent.grs.all %>%
+  filter(ismax == T) %>% 
+  ggplot(aes(x = date, y = max.growth, group = OTU)) +
+  geom_point() +
   labs(x = "Week of the year", 
        y = expression(Mean~growth~rate~(wk^-1))) +
   scale_color_discrete_qualitative(palette = "Dynamic") +
-  #scale_y_continuous(limits = c(-5, 12)) +
-   ggsave("figures/max_growth_date.pdf", bg = "white", width = 8, height = 8*3/4)
-  # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
-
+  scale_x_date(date_labels = "%b") +
+  coord_polar(theta = "x") +
+  theme_minimal()
 
 ```
 
