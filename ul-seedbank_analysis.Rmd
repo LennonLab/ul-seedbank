@@ -1053,18 +1053,19 @@ nfd.response.df <- rbind.data.frame(
 nfd.response.df %>% 
 #  filter(p < 0.05) %>% 
   ggplot(aes(x = taxa, y = strength, color = subset)) +
+  geom_hline(yintercept = 1) +
   geom_point() +
-  geom_smooth()
+  geom_line() +
+  labs(x = "Number of OTUs included in analysis",
+       y = "Strength of NFD \n(observed / null mean)") +
+  ggsave("figures/nfd_sensitivity.pdf", width = 6, height = 4)
 
 cbind.data.frame(taxa = active.nfd.response$taxa, 
       strength = active.nfd.response$strength / total.nfd.response$strength) %>% 
   ggplot(aes(x = taxa, y = strength)) +
   geom_point() +
   geom_abline(slope = 0, intercept = 1, color = "gray") +
-  geom_smooth(method = "loess", se = F) + 
-  labs(x = "Number of OTUs included in analysis",
-       y = "Strength of NFD \n(observed / null mean)") +
-  ggsave("figures/nfd_sensitivity.png", width = 6, height = 4, dpi = 600)
+  geom_smooth(method = "loess", se = F) 
 ```
 
 # Reappeareance Scores
