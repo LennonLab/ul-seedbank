@@ -27,6 +27,9 @@ cv <- function(x){
   sd(x) / abs(mean(x))
 }
 
+shifter <- function(x, n = 1) {
+  if (n == 0) x else c(tail(x, -n), head(x, n))
+}
 ```
 
 Next, we'll set the aesthetics of the figures we will produce. 
@@ -107,8 +110,8 @@ OTUs.total <- OTUs.total + decostand(OTUs.active, method = "pa")
 OTUs.total.pa <- decostand(OTUs.total, method = "pa")
 OTUs.active.pa <- decostand(OTUs.active, method = "pa")
 
-OTUs.REL <- decostand(OTUs, method = "hellinger")
 #OTUs.REL <- decostand(OTUs, method = "total")
+OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 
@@ -271,34 +274,35 @@ fig.pca <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df
   geom_hline(aes(yintercept = 0), alpha = 0.1) + 
   geom_vline(aes(xintercept = 0), alpha = 0.1) +
   #stat_ellipse(aes(color = lubridate::month(date, label = T)), alpha = 0.5) +
-  geom_path(alpha = 0.4, arrow = arrow(angle = 15, length = unit(0.1, "inches"),
+  geom_path(alpha = 0.3, arrow = arrow(angle = 15, length = unit(0.1, "inches"),
                   ends = "last", type = "closed")) + 
-  geom_point(aes(color = lubridate::month(date, label = T)), alpha = 0.6, size = 2) +
-  scale_color_viridis_d("") + 
-  geom_segment(data = active.spec.scores.pc,
-               aes(x = 0, y = 0,
-                   xend = scale.arrows0*PC1,
-                   yend = scale.arrows0*PC2),
-               alpha = 0.7,
-               size = 1,
-               color = "black",
-               arrow = arrow(
-                 angle = 20,
-                 length = unit(.1, "inches"),
-                 type = "open"),
-             show.legend = F) +
-  geom_text_repel(data = active.spec.scores.pc,
-                   aes(x = scale.arrows0*PC1,
-                       y = scale.arrows0*PC2),
-                   label = active.spec.scores.pc$name,
-                   # nudge_x = c(-.2, .4, .5, .4),
-                   nudge_y = c(.1, 0.05, .05, 0),
-                   point.padding = .5, alpha = 1) +
+  geom_point(aes(color = lubridate::month(date, label = T),
+                 shape = lubridate::month(date, label = T)), alpha = 0.5, size = 3) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+  scale_shape_manual(values = rep(15:18,3)) +
+  # geom_segment(data = active.spec.scores.pc,
+  #              aes(x = 0, y = 0,
+  #                  xend = scale.arrows0*PC1,
+  #                  yend = scale.arrows0*PC2),
+  #              alpha = 0.7,
+  #              size = 1,
+  #              color = "black",
+  #              arrow = arrow(
+  #                angle = 20,
+  #                length = unit(.1, "inches"),
+  #                type = "open"),
+  #            show.legend = F) +
+  # geom_text_repel(data = active.spec.scores.pc,
+  #                  aes(x = scale.arrows0*PC1,
+  #                      y = scale.arrows0*PC2),
+  #                  label = active.spec.scores.pc$name,
+  #                  # nudge_x = c(-.2, .4, .5, .4),
+  #                  nudge_y = c(.1, 0.05, .05, 0),
+  #                  point.padding = .5, alpha = 1) +
   xlab(paste("PC 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PC 2 (",var2,"%)", sep = "")) +
   coord_fixed() +
-  ggsave("figures/active_trajectory.pdf", bg = "white", height = 6, width = 8) +
-  ggsave("figures/active_trajectory.png", bg = "white", height = 6, width = 8, dpi = 600)
+  ggsave("figures/fig1a.pdf", bg = "white", height = 6, width = 8)
 fig.pca
 
 ```
@@ -306,62 +310,63 @@ fig.pca
 ### Explaining temporal beta diversity
 #### DDRs
 ```{r}
-
-samplingdays <- env.data$date
-time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
-for(i in 1:length(samplingdays)){
-  for(j in 1:length(samplingdays)){
-    time.dist[i,j] <- (samplingdays[i] - samplingdays[j])
-  }
-}
-time.dist <- as.dist(time.dist)
-
-env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
-env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
-
-
-OTUs.betapart <- beta.pair(x = OTUs.total.pa, index.family = "jaccard")
-OTUs.nest <- OTUs.betapart$beta.jne
-OTUs.turn <- OTUs.betapart$beta.jtu
-OTUs.jac <- OTUs.betapart$beta.jac
-
-OTUs.act.betapart <- beta.pair(x = OTUs.active.pa, index.family = "jaccard")
-OTUs.act.nest <- OTUs.act.betapart$beta.jne
-OTUs.act.turn <- OTUs.act.betapart$beta.jtu
-OTUs.act.jac <- OTUs.act.betapart$beta.jac
-
-
-timeddr <- data.frame(total_turn = as.vector(OTUs.turn),
-                      total_nest = as.vector(OTUs.nest),
-                      total_jac = as.vector(OTUs.jac),
-                      active_turn = as.vector(OTUs.act.turn),
-                      active_nest = as.vector(OTUs.act.nest),
-                      active_jac = as.vector(OTUs.act.jac),
-                      EnvDist = as.vector(env.dist), 
-                      Time = as.vector(time.dist))
-
-betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-  ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
-  geom_jitter(alpha = 0.1, size = 0.7) +
-  geom_smooth(size = 2, method = "lm") +
-  scale_y_continuous(limits = c(0,1))
-
-betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-  ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
-  geom_jitter(alpha = 0.1, size = 0.7) +
-  geom_smooth(size = 2) +
-  ylab("Community Dissimilarity\n") + 
-  xlab("Time lag (days)") +
-  scale_y_continuous(limits = c(0,1))
-
-plot_grid(betapart.ddr.time + theme(legend.position = "none"), 
-          betapart.ddr.env, ncol = 2, align = 'hv', axis = 'l',
-          labels = c("A", "B")) +
-  ggsave(filename = "figures/betapart_ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
+# 
+# samplingdays <- env.data$date
+# time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
+# for(i in 1:length(samplingdays)){
+#   for(j in 1:length(samplingdays)){
+#     time.dist[i,j] <- (samplingdays[i] - samplingdays[j])
+#   }
+# }
+# time.dist <- as.dist(time.dist)
+# 
+# env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
+# env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
+# 
+# 
+# OTUs.betapart <- beta.pair(x = OTUs.total.pa, index.family = "jaccard")
+# OTUs.nest <- OTUs.betapart$beta.jne
+# OTUs.turn <- OTUs.betapart$beta.jtu
+# OTUs.jac <- OTUs.betapart$beta.jac
+# 
+# OTUs.act.betapart <- beta.pair(x = OTUs.active.pa, index.family = "jaccard")
+# OTUs.act.nest <- OTUs.act.betapart$beta.jne
+# OTUs.act.turn <- OTUs.act.betapart$beta.jtu
+# OTUs.act.jac <- OTUs.act.betapart$beta.jac
+# 
+# 
+# timeddr <- data.frame(total_turn = as.vector(OTUs.turn),
+#                       total_nest = as.vector(OTUs.nest),
+#                       total_jac = as.vector(OTUs.jac),
+#                       active_turn = as.vector(OTUs.act.turn),
+#                       active_nest = as.vector(OTUs.act.nest),
+#                       active_jac = as.vector(OTUs.act.jac),
+#                       EnvDist = as.vector(env.dist), 
+#                       Time = as.vector(time.dist))
+# 
+# betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+#   ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
+#   geom_jitter(alpha = 0.1, size = 0.7) +
+#   geom_smooth(size = 2, method = "lm") +
+#   scale_y_continuous(limits = c(0,1))
+# 
+# betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
+#   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
+#   geom_jitter(alpha = 0.1, size = 0.7) +
+#   geom_smooth(size = 2) +
+#   ylab("Community Dissimilarity\n") + 
+#   xlab("Time lag (days)") +
+#   scale_y_continuous(limits = c(0,1))
+# 
+# plot_grid(betapart.ddr.time + theme(legend.position = "none"), 
+#           betapart.ddr.env, ncol = 2, align = 'hv', axis = 'l',
+#           labels = c("A", "B")) +
+#   ggsave(filename = "figures/betapart_ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
 ```
 #### RDA
 ```{r}
 #### Constrained Ordination
+samplingdays <- env.data$date
 intervals <- as.vector(diff.Date(samplingdays))
 w <- 1/(intervals/max(intervals))
 aem.out <- adespatial::aem.time(n = length(samplingdays), w = w, moran = TRUE)
@@ -388,7 +393,9 @@ envfit(active.rda.0, aem.subs)
 
 time.mod <- model.matrix(~ -1 + AEM1 + AEM2 + AEM3 + AEM4 + AEM5 + AEM6 + AEM7 + AEM15, data = aem.subs)
 env.mod <- model.matrix(~ temp + doc + oxygen + spc + ph + secchi, data = env.preds)
-active.rda <- rda(OTUs.rel.act.subs ~ env.mod + Condition(time.mod))
+
+# RDA without controlling for time
+active.rda <- rda(OTUs.rel.act.subs ~ env.mod)
 
 active.rda.sum <- summary(active.rda)
 
@@ -399,7 +406,7 @@ site.scores <- as.data.frame(scores(active.rda)$sites)
 
 
 active.site.scores <- site.scores %>% rownames_to_column(var = "sample.name") %>% inner_join(design)
-active.spec.scores <- spec.scores[which(abs(spec.scores$RDA1) > 0.06 | abs(spec.scores$RDA2) > 0.06),] %>% 
+active.spec.scores <- spec.scores[which(abs(spec.scores$RDA1) > 0.2 | abs(spec.scores$RDA2) > 0.2),] %>% 
   rownames_to_column(var = "OTU") %>% inner_join(OTU.tax)
 
 # active.spec.scores.rda <- as.data.frame(scores(active.rda, display = "species")) %>% rownames_to_column(var = "OTU") 
@@ -417,16 +424,20 @@ active.spec.scores$name <- fam.name.vec
 var.explain1 <- round(eigenvals(active.rda)[1]/sum(eigenvals(active.rda))*100,2)
 var.explain2 <- round(eigenvals(active.rda)[2]/sum(eigenvals(active.rda))*100,2)
 
-scale.arrows <- 6
-scale.arrows2 <- 1.5
-fig.rda <- ggplot() + 
+scale.arrows <- 1.4
+scale.arrows2 <- 1
+fig.rda <- 
+  ggplot() + 
   # Add site scores as points
   # geom_point(data = site.scores, aes(x = RDA1, y = RDA2)) + 
-  geom_point(data = active.site.scores, alpha = 0.3,
-            aes(x = RDA1, y = RDA2, 
-                color = lubridate::month(date, label = T, abbr = T))) + 
-  scale_color_viridis(discrete = T, "Month") +
+  geom_hline(aes(yintercept = 0), alpha = 0.1) + 
+  geom_vline(aes(xintercept = 0), alpha = 0.1) +
   
+  geom_point(data = active.site.scores, alpha = 0.5, size = 3,
+            aes(x = RDA1, y = RDA2, shape = lubridate::month(date, label = T, abbr = T),
+                color = lubridate::month(date, label = T, abbr = T))) + 
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.2), 9)) +
+  scale_shape_manual(values = rep(15:18,3)) +
   # Add species scores as vectors
   geom_segment(data = active.spec.scores, 
                aes(x = center, y = center, 
@@ -436,7 +447,7 @@ fig.rda <- ggplot() +
              show.legend = F) + 
   geom_text_repel(data = active.spec.scores, 
                aes(x = scale.arrows*RDA1, y = scale.arrows*RDA2), 
-               label = active.spec.scores$name, alpha = 1, point.padding = .3) + 
+               label = active.spec.scores$name, alpha = 1, point.padding = .5) + 
 
   # Add environmental vectors in blue
   geom_segment(data = env.vecs,
@@ -445,18 +456,91 @@ fig.rda <- ggplot() +
                  yend = scale.arrows2*RDA2),
              arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"),
              show.legend = F, alpha = .5, color = "blue") +
-  geom_text_repel(data = env.vecs, 
-                  aes(x = scale.arrows2*RDA1, y = scale.arrows2*RDA2),
-                    label = rownames(env.vecs), color = "blue", 
-                   segment.alpha = 0.3, alpha = 1) + 
+  
+  geom_text(data = env.vecs, 
+                  aes(x = (scale.arrows2+.1)*RDA1, y = (scale.arrows2+.1)*RDA2),
+                    label = rownames(env.vecs), color = "blue", nudge_y = c(.1,0,0,0,0,0), nudge_x = c(.2,0,0,0,0,0),
+                   segment.alpha = 0.3, alpha = 1, point.padding = .5) +
+  
+   
   coord_fixed() + 
+  scale_x_reverse() +
   labs(x = paste0("RDA 1 (",var.explain1,"%)"),
        y = paste0("RDA 2 (",var.explain2,"%)")) +
-  ggsave("figures/rda_active_aem.pdf", bg = "white", height = 6, width = 8) + 
-  ggsave("figures/rda_active_aem.png", bg = "white", height = 6, width = 8, dpi = 600)
+  ggsave("figures/fig1b1.pdf", bg = "white", height = 6, width = 8)
+fig.rda
 
+# RDA controlling for time
+# active.rda <- rda(OTUs.rel.act.subs ~ env.mod + Condition(time.mod))
+# 
+# active.rda.sum <- summary(active.rda)
+# 
+# env.vecs <- cbind.data.frame(center = 0, active.rda.sum$biplot[,c(1:2)])
+# rownames(env.vecs) <- c("Temp", "DOC", "DO", "SpC", "pH", "secchi")
+# spec.scores <- cbind.data.frame(center = 0, scores(active.rda)$species)
+# site.scores <- as.data.frame(scores(active.rda)$sites)
+# 
+# 
+# active.site.scores <- site.scores %>% rownames_to_column(var = "sample.name") %>% inner_join(design)
+# active.spec.scores <- spec.scores[which(abs(spec.scores$RDA1) > 0.06 | abs(spec.scores$RDA2) > 0.06),] %>% 
+#   rownames_to_column(var = "OTU") %>% inner_join(OTU.tax)
+# 
+# # active.spec.scores.rda <- as.data.frame(scores(active.rda, display = "species")) %>% rownames_to_column(var = "OTU") 
+# #   filter(RDA1 > .2 | RDA2 > .2) %>% 
+# #   left_join(OTU.tax)
+# familynames <- stringr::str_split(active.spec.scores$Family, "_")
+# fam.name.vec <- vector(length = length(active.spec.scores$Family))
+# for(i in 1:length(active.spec.scores$Family)){
+#   thisfamily <- familynames[[i]]
+#   fam.name.vec[i] <- paste(thisfamily[1], "sp.")
+# } 
+# active.spec.scores$name <- fam.name.vec
+# active.spec.scores$name <- fam.name.vec
+# 
+# var.explain1 <- round(eigenvals(active.rda)[1]/sum(eigenvals(active.rda))*100,2)
+# var.explain2 <- round(eigenvals(active.rda)[2]/sum(eigenvals(active.rda))*100,2)
+# 
+# scale.arrows <- 6
+# scale.arrows2 <- 1.5
+# fig.rda <- ggplot() + 
+#   # Add site scores as points
+#   # geom_point(data = site.scores, aes(x = RDA1, y = RDA2)) + 
+#   geom_point(data = active.site.scores, alpha = 0.9, size = 3,
+#             aes(x = RDA1, y = RDA2, 
+#                 color = lubridate::month(date, label = T, abbr = T),
+#                 shape = lubridate::month(date, label = T, abbr = T))) + 
+#   scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+#   scale_shape_manual(values = c(0:2,5:14)) +
+#   # Add species scores as vectors
+#   geom_segment(data = active.spec.scores, 
+#                aes(x = center, y = center, 
+#                    xend = scale.arrows*RDA1, yend = scale.arrows*RDA2), 
+#                alpha = .5, color = "black",
+#              arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"), 
+#              show.legend = F) + 
+#   geom_text_repel(data = active.spec.scores, 
+#                aes(x = scale.arrows*RDA1, y = scale.arrows*RDA2), 
+#                label = active.spec.scores$name, alpha = 1, point.padding = .3) + 
+# 
+#   # Add environmental vectors in blue
+#   geom_segment(data = env.vecs,
+#              aes(x = center, y = center, 
+#                  xend = scale.arrows2*RDA1, 
+#                  yend = scale.arrows2*RDA2),
+#              arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"),
+#              show.legend = F, alpha = .5, color = "blue") +
+#   geom_text_repel(data = env.vecs, 
+#                   aes(x = scale.arrows2*RDA1, y = scale.arrows2*RDA2),
+#                     label = rownames(env.vecs), color = "blue", 
+#                    segment.alpha = 0.3, alpha = 1) + 
+#   coord_fixed() + 
+#   labs(x = paste0("RDA 1 (",var.explain1,"%)"),
+#        y = paste0("RDA 2 (",var.explain2,"%)")) +
+#   ggsave("figures/fig1b2.pdf", bg = "white", height = 6, width = 8)
+
+# plot combined figure
 plot_grid(fig.pca, fig.rda + theme(legend.position = "none"), align = "hv", axis = "lr", ncol = 2, labels = "AUTO") +
-  ggsave("figures/ordinations_active.png", width = 12, height = 3/8*16, dpi = 600)
+  ggsave("figures/fig1.pdf", width = 12, height = .6*4/4*12)
 
 ## so this plot shows, after controlling for temporal autocorrelation, which environmental drivers are most important for some taxa
 ```
