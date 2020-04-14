@@ -20,6 +20,9 @@ require(progress)
 require(adespatial)
 require(ggrepel)
 require(colorspace)
+require(parallel)
+library(foreach)
+library(doParallel)
 
 source("bin/mothur_tools.R")
 
@@ -603,12 +606,22 @@ get.null.distr <- function(comm, iters = 5000){
   return(nfd.cov)
 }
 
+get.cov <- function(comm){
+  nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+  nfd <- calc.neg.freq.dep(nullcom)
+  nfd <- nfd %>% filter(-fd > 0)
+  return(cov(log(nfd$eq.freq), log(-nfd$fd)))
+}
+
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
-env.data %>% ggplot(aes(x = date, y = temp)) + 
-  geom_point() + 
+env.data %>% select(date, temp, spc, oxygen, salinity, secchi, ph, chla, tp, tn, doc) %>% gather(-date, key = "variable", value = "val") %>% 
+  ggplot(aes(x = date, y = val)) + 
+  geom_point(alpha = 0.5) + 
   geom_line() +
   scale_x_date(breaks = "month") +
-  coord_flip()
+  coord_flip() +
+  facet_wrap(~variable, scales = "free_x", nrow = 1)
+
 # separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.total[,which(
   colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
@@ -673,8 +686,23 @@ cbind.data.frame(active_freq = nfd.active$eq.freq,
 
 # Generate null distributions
 iternum <- 5000
-tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
-act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
+# tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
+# act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
+
+#setup parallel backend to use many processors
+cores=detectCores(logical = F)
+cl <- makeCluster(cores) #not to overload your computer
+registerDoParallel(cl)
+
+tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.total.nozero)
+}
+act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.active.nozero)
+}
+#stop cluster
+stopCluster(cl)
+
 
 # Compare observed with null
 hist(tot.nd, breaks = 20); abline(v = nfd.total.cov, col = "red")
@@ -801,57 +829,57 @@ nfd.summary
 
 #saveRDS(nfd.obs.summer, "analysis/temp-results/nfd_obs_summer.rda")
 #saveRDS(nfd.nulldists.summer, "analysis/temp-results/nfd_nulldists_summer.rda")
-nfd.obs.summer <- readRDS("analysis/temp-results/nfd_obs_summer.rda")
-nfd.nulldists.summer <- readRDS("analysis/temp-results/nfd_nulldists_summer.rda")
+# nfd.obs.summer <- readRDS("analysis/temp-results/nfd_obs_summer.rda")
+# nfd.nulldists.summer <- readRDS("analysis/temp-results/nfd_nulldists_summer.rda")
 
 
-nfd.nulldists.summer %>%
-  ggplot(aes(y = nfd, x = subset)) +
-  facet_wrap(~ year, ncol = 1) +
-  #geom_jitter(color = "grey", alpha = 0.1) +
-  geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
-  geom_point(data = nfd.obs.summer, aes(x = subset, y = nfd),
-             color = "black", size = 5, show.legend = F) +
-  scale_fill_manual(values = my.cols[c(1,4)]) +
-  coord_flip() +
-  ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
-  xlab("")
-
-labs <- nfd.nulldists.summer %>% 
-  group_by(year, subset) %>% 
-  summarize(mean_nfd = mean(nfd))
-
-nfd.nulldists.summer %>% 
-  ggplot(aes(x = nfd, fill = subset)) +
-  facet_wrap(~year, ncol = 1) +
-  geom_histogram(alpha = 0.5, bins = 100) +
-  geom_vline(data = nfd.obs.summer, aes(xintercept = nfd, color = subset), size = 1) +
-  theme(legend.position = "none") +
-  labs(x = "Cov(EQ frequency, NFD)",
-       y = "") +
-  geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
-  ggsave("figures/nfd_by_year_summer.pdf", width = 4, height = 9)
-
-# Calculate standardized effect sizes
-nfd.summary.summer <- nfd.nulldists.summer %>%
-  group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
-  left_join(nfd.obs.summer) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
-  mutate(nfd.strength = nfd / mean.nfd)
-nfd.summary.summer
-
-
-(pval.2013.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2013)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Total", year == 2013)$nfd))[1] / 5001)
-(pval.2013.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2013)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Active", year == 2013)$nfd))[1] / 5001)
-(pval.2014.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2014)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Total", year == 2014)$nfd))[1] / 5001)
-(pval.2014.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2014)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Active", year == 2014)$nfd))[1] / 5001)
-(pval.2015.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2015)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Total", year == 2015)$nfd))[1] / 5001)
-(pval.2015.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2015)$nfd, 
-       filter(nfd.nulldists.summer, subset == "Active", year == 2015)$nfd))[1] / 5001)
+# nfd.nulldists.summer %>%
+#   ggplot(aes(y = nfd, x = subset)) +
+#   facet_wrap(~ year, ncol = 1) +
+#   #geom_jitter(color = "grey", alpha = 0.1) +
+#   geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
+#   geom_point(data = nfd.obs.summer, aes(x = subset, y = nfd),
+#              color = "black", size = 5, show.legend = F) +
+#   scale_fill_manual(values = my.cols[c(1,4)]) +
+#   coord_flip() +
+#   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
+#   xlab("")
+# 
+# labs <- nfd.nulldists.summer %>% 
+#   group_by(year, subset) %>% 
+#   summarize(mean_nfd = mean(nfd))
+# 
+# nfd.nulldists.summer %>% 
+#   ggplot(aes(x = nfd, fill = subset)) +
+#   facet_wrap(~year, ncol = 1) +
+#   geom_histogram(alpha = 0.5, bins = 100) +
+#   geom_vline(data = nfd.obs.summer, aes(xintercept = nfd, color = subset), size = 1) +
+#   theme(legend.position = "none") +
+#   labs(x = "Cov(EQ frequency, NFD)",
+#        y = "") +
+#   geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
+#   ggsave("figures/nfd_by_year_summer.pdf", width = 4, height = 9)
+# 
+# # Calculate standardized effect sizes
+# nfd.summary.summer <- nfd.nulldists.summer %>%
+#   group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
+#   left_join(nfd.obs.summer) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
+#   mutate(nfd.strength = nfd / mean.nfd)
+# nfd.summary.summer
+# 
+# 
+# (pval.2013.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2013)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Total", year == 2013)$nfd))[1] / 5001)
+# (pval.2013.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2013)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Active", year == 2013)$nfd))[1] / 5001)
+# (pval.2014.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2014)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Total", year == 2014)$nfd))[1] / 5001)
+# (pval.2014.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2014)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Active", year == 2014)$nfd))[1] / 5001)
+# (pval.2015.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2015)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Total", year == 2015)$nfd))[1] / 5001)
+# (pval.2015.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2015)$nfd, 
+#        filter(nfd.nulldists.summer, subset == "Active", year == 2015)$nfd))[1] / 5001)
 ```
 
 ```{r}
