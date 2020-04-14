@@ -133,23 +133,25 @@ data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.act
   mutate(diversity_ratio = Total / Active) %>% 
   #gather(community, diversity, -date) %>% 
   ggplot(aes(x = date, y = diversity_ratio)) + 
-  geom_vline(xintercept = as.numeric(as.Date(c("2014-01-01", "2015-01-01"))),
-             linetype = 2, color = "grey", alpha = 0.8) +
-  geom_line(size = 1, alpha = .8, show.legend = F) +
-  geom_point(size = 3, alpha = 0.5) +
+  # geom_vline(xintercept = as.numeric(as.Date(c("2014-01-01", "2015-01-01"))),
+  #            linetype = 2, color = "grey", alpha = 0.8) +
+  geom_line(size = .7, alpha = .5, show.legend = F) +
+  geom_point(aes(color = lubridate::month(date, label = T)), size = 3, alpha = 0.7) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
   geom_smooth(alpha = 0.3, color = "black", span = .5) +
-  ylab(expression(paste(alpha,"-diversity ratio (total / active richness)"))) +
+  # ylab(expression(paste(alpha,"-diversity ratio (total / active richness)"))) +
+  ylab("Richness ratio (total : active)") +
   xlab("") +
   scale_x_date(date_breaks = "3 month", 
                date_minor_breaks = "1 month", 
                date_labels = "%b %Y") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
   #scale_color_manual("Community Subset", values = c("#b2df8a", "#1f78b4")) +
-  scale_color_manual(values = my.cols[c(4,1)]) +
+  #scale_color_manual(values = my.cols[c(4,1)]) +
   #scale_y_log10() +
   #annotation_logticks(sides = "l") +
-  ggsave("figures/alpha_diversity.pdf", bg = "white", height = 6, width = 8) +
-  ggsave("figures/alpha_diversity.png", bg = "white", height = 6, width = 8, dpi = 600)
+  ggsave("figures/fig4.pdf", bg = "white", height = 3/4*6, width = 6)
 ```
 
 
@@ -736,8 +738,7 @@ nfd.nulldists %>%
   coord_flip() +
   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") + 
   xlab("") + 
-  ggsave("figures/negative_freq_depend.pdf", bg = "white", width = 6, height = 4, units = "in") +
-  ggsave("figures/negative_freq_depend.png", bg = "white", width = 6, height = 4, units = "in", dpi = 600)
+  ggsave("figures/fig3.pdf", bg = "white", width = 6, height = 4, units = "in")
 
 # Calculate standardized effect sizes
 nfd.summary <- nfd.nulldists %>% 
@@ -958,57 +959,57 @@ nfd.summary
 
 # saveRDS(nfd.obs.winter, "analysis/temp-results/nfd_obs_winter.rda")
 # saveRDS(nfd.nulldists.winter, "analysis/temp-results/nfd_nulldists_winter.rda")
-nfd.obs.winter <- readRDS("analysis/temp-results/nfd_obs_winter.rda")
-nfd.nulldists.winter <- readRDS("analysis/temp-results/nfd_nulldists_winter.rda")
-
-
-nfd.nulldists.winter %>%
-  ggplot(aes(y = nfd, x = subset)) +
-  facet_wrap(~ year, ncol = 1) +
-  #geom_jitter(color = "grey", alpha = 0.1) +
-  geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
-  geom_point(data = nfd.obs.winter, aes(x = subset, y = nfd),
-             color = "black", size = 5, show.legend = F) +
-  scale_fill_manual(values = my.cols[c(1,4)]) +
-  coord_flip() +
-  ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
-  xlab("")
-
-labs <- nfd.nulldists.winter %>% 
-  group_by(year, subset) %>% 
-  summarize(mean_nfd = mean(nfd))
-
-nfd.nulldists.winter %>% 
-  ggplot(aes(x = nfd, fill = subset)) +
-  facet_wrap(~year, ncol = 1) +
-  geom_histogram(alpha = 0.5, bins = 100) +
-  geom_vline(data = nfd.obs.winter, aes(xintercept = nfd, color = subset), size = 1) +
-  theme(legend.position = "none") +
-  labs(x = "Cov(EQ frequency, NFD)",
-       y = "") +
-  geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
-  ggsave("figures/nfd_by_year_winter.pdf", width = 4, height = 9)
-
-# Calculate standardized effect sizes
-nfd.summary.winter <- nfd.nulldists.winter %>%
-  group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
-  left_join(nfd.obs.winter) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
-  mutate(nfd.strength = nfd / mean.nfd)
-nfd.summary.winter
-
-
-(pval.2013.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2013)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Total", year == 2013)$nfd))[1] / 5001)
-(pval.2013.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2013)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Active", year == 2013)$nfd))[1] / 5001)
-(pval.2014.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2014)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Total", year == 2014)$nfd))[1] / 5001)
-(pval.2014.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2014)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Active", year == 2014)$nfd))[1] / 5001)
-(pval.2015.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2015)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Total", year == 2015)$nfd))[1] / 5001)
-(pval.2015.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2015)$nfd, 
-       filter(nfd.nulldists.winter, subset == "Active", year == 2015)$nfd))[1] / 5001)
+# nfd.obs.winter <- readRDS("analysis/temp-results/nfd_obs_winter.rda")
+# nfd.nulldists.winter <- readRDS("analysis/temp-results/nfd_nulldists_winter.rda")
+# 
+# 
+# nfd.nulldists.winter %>%
+#   ggplot(aes(y = nfd, x = subset)) +
+#   facet_wrap(~ year, ncol = 1) +
+#   #geom_jitter(color = "grey", alpha = 0.1) +
+#   geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
+#   geom_point(data = nfd.obs.winter, aes(x = subset, y = nfd),
+#              color = "black", size = 5, show.legend = F) +
+#   scale_fill_manual(values = my.cols[c(1,4)]) +
+#   coord_flip() +
+#   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
+#   xlab("")
+# 
+# labs <- nfd.nulldists.winter %>% 
+#   group_by(year, subset) %>% 
+#   summarize(mean_nfd = mean(nfd))
+# 
+# nfd.nulldists.winter %>% 
+#   ggplot(aes(x = nfd, fill = subset)) +
+#   facet_wrap(~year, ncol = 1) +
+#   geom_histogram(alpha = 0.5, bins = 100) +
+#   geom_vline(data = nfd.obs.winter, aes(xintercept = nfd, color = subset), size = 1) +
+#   theme(legend.position = "none") +
+#   labs(x = "Cov(EQ frequency, NFD)",
+#        y = "") +
+#   geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
+#   ggsave("figures/nfd_by_year_winter.pdf", width = 4, height = 9)
+# 
+# # Calculate standardized effect sizes
+# nfd.summary.winter <- nfd.nulldists.winter %>%
+#   group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
+#   left_join(nfd.obs.winter) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
+#   mutate(nfd.strength = nfd / mean.nfd)
+# nfd.summary.winter
+# 
+# 
+# (pval.2013.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2013)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Total", year == 2013)$nfd))[1] / 5001)
+# (pval.2013.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2013)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Active", year == 2013)$nfd))[1] / 5001)
+# (pval.2014.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2014)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Total", year == 2014)$nfd))[1] / 5001)
+# (pval.2014.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2014)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Active", year == 2014)$nfd))[1] / 5001)
+# (pval.2015.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2015)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Total", year == 2015)$nfd))[1] / 5001)
+# (pval.2015.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2015)$nfd, 
+#        filter(nfd.nulldists.winter, subset == "Active", year == 2015)$nfd))[1] / 5001)
 ```
 
 
@@ -1450,13 +1451,16 @@ persistent.grs.all$date <- lubridate::parse_date_time(paste(2014, persistent.grs
 persistent.grs.all$Genus <- str_replace(persistent.grs.all$Genus, coll("_unclassified"), " sp.")
 
 persistent.grs.all %>%   
+  mutate(mean.growth = ifelse(mean.growth<0, 0, mean.growth)) %>% 
   ggplot(aes(x = date, group = OTU)) +
   geom_line(aes(y = mean.growth), alpha = 0.1) + 
   geom_point(data = subset(persistent.grs.all, ismax == T), 
-             aes(y = max.growth), alpha = 0.5, size = 3) + 
+             aes(y = max.growth, 
+                 color = lubridate::month(date, label = T)), alpha = 0.7, size = 3) + 
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
   #coord_flip() + 
-  geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -5), 
-              fill = "white", col = "white", alpha = 0.5) +
+  # geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -5), 
+  #             fill = "white", col = "white", alpha = 0.8) +
   theme(legend.position = "bottom", legend.text = element_text(size = 9)) +
   # geom_text_repel(data = subset(persistent.grs.all, ismax == T),
   #           aes(y = max.growth, label = Genus), 
@@ -1464,10 +1468,12 @@ persistent.grs.all %>%
   #           size = 2, color = "black", segment.alpha = .5) +
   labs(x = "", 
        y = expression(Mean~growth~rate~(wk^-1))) +
-  scale_color_discrete_qualitative(palette = "Dynamic") +
   scale_x_date(date_labels = "%b", breaks = "1 month") +
   coord_polar(theta = "x") +
-  theme_minimal() +
+  theme_bw() +
+  theme(legend.position = "none", 
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank())+
   #scale_y_continuous(limits = c(-5, 12)) +
    ggsave("figures/fig2.pdf", bg = "white", width = 8, height = 8*3/4)
   # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
