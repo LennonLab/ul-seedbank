@@ -622,7 +622,8 @@ env.data %>% select(date, temp, spc, oxygen, salinity, secchi, ph, chla, tp, tn,
   geom_line() +
   scale_x_date(breaks = "month") +
   coord_flip() +
-  facet_wrap(~variable, scales = "free_x", nrow = 1)
+  facet_wrap(~variable, scales = "free_x", nrow = 1) + 
+  ggsave("figures/env_data.pdf", width = 8, height = 8)
 
 # separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.total[,which(
@@ -1475,7 +1476,7 @@ persistent.grs.all %>%
         panel.grid.minor.y = element_blank(),
         panel.grid.minor.x = element_blank())+
   #scale_y_continuous(limits = c(-5, 12)) +
-   ggsave("figures/fig2.pdf", bg = "white", width = 8, height = 8*3/4)
+   ggsave("figures/fig2.pdf", bg = "white", width = 6, height = 6)
   # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
 
 persistent.grs.all %>%
@@ -1488,6 +1489,55 @@ persistent.grs.all %>%
   scale_x_date(date_labels = "%b") +
   coord_polar(theta = "x") +
   theme_minimal()
+
+```
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ggtree")
+
+library(ape)
+library(ggtree)
+library(aplot)
+
+tree <- read.tree("data/ul_resgrad.tree")
+summary(tree)
+
+# drop all but persistetn OTUs
+persistent.tree <- drop.tip(tree, 
+         tree$tip.label[!(tree$tip.label %in% persistent.grs.all$OTU)])
+persistent.max.grs <- subset(persistent.grs.all, ismax == T) %>% 
+  rename(label = OTU)
+
+tree_annotated <- ggtree(persistent.tree) %<+% persistent.max.grs
+
+# tree
+tree_plot <- tree_annotated + 
+  theme_tree() +
+  geom_tiplab(aes(color = lubridate::month(date, label = T)),
+              offset = .05, align = T, show.legend = F) +
+  geom_tippoint(aes(color = lubridate::month(date, label = T))) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) + 
+  theme(legend.title = element_blank(),
+        legend.position = "none") +
+  xlim_tree(xlim = 1.68) +
+  ggsave("figures/tree_persistent_taxa.pdf", height = 12, width = 12)
+
+# mean growth per month for the taxa
+growth_plot <- persistent.grs.all %>% 
+  mutate(month = lubridate::month(date, label = T)) %>%
+  rename(label = OTU) %>% 
+  ggplot(aes(x = month, y = label, fill = mean.growth)) + 
+  geom_tile() + 
+  scale_fill_continuous_diverging(palette = "Purple-Green", rev = F) +
+  labs(x = "", y = "", fill = "Mean change in \nrel. abund. (per week)") +
+  theme_tree2()
+
+composite_plot <- growth_plot %>% insert_left(tree_plot)
+ggsave(plot = composite_plot, filename = "figures/tree_growth_composite.pdf", width = 12, height = 12)
+
 
 ```
 
