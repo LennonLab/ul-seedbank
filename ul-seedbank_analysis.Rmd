@@ -616,13 +616,24 @@ get.cov <- function(comm){
 }
 
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
-env.data %>% select(date, temp, spc, oxygen, salinity, secchi, ph, chla, tp, tn, doc) %>% gather(-date, key = "variable", value = "val") %>% 
+env.data %>% select(date, temp, spc, oxygen, salinity, secchi, ph, chla, tp, tn, doc) %>% 
+  rename("Chl a (mg/L)" = chla,
+         "Dissolved organic carbon (mg/L)" = doc,
+         "Dissolved oxygen (mg/L)" = oxygen,
+         "pH" = ph,
+         "Salinity (mg/L)" = salinity,
+         "Secchi depth (m)" = secchi,
+         "Specific conductivity (µS)" = spc,
+         "Temperature (°C)" = temp,
+         "Total nitrogen (mg/L)" = tn,
+         "Total phosphorus (mg/L)" = tp) %>% 
+  gather(-date, key = "variable", value = "val") %>% 
   ggplot(aes(x = date, y = val)) + 
   geom_point(alpha = 0.5) + 
   geom_line() +
-  scale_x_date(breaks = "month") +
-  coord_flip() +
-  facet_wrap(~variable, scales = "free_x", nrow = 1) + 
+  scale_x_date(date_labels = "%b\n%Y", date_breaks = "6 months") +
+  labs(x = "", y = "") +
+  facet_wrap(~variable, scales = "free_y", ncol = 2) + 
   ggsave("figures/env_data.pdf", width = 8, height = 8)
 
 # separate OTUs present across the nearly whole time series
@@ -1397,16 +1408,20 @@ env.pcs.subset %>%
   ggplot(aes(x = PC1, y = PC2)) +
   geom_jitter(aes(
     color = lubridate::month(date, label = T, abbr = T)), 
-    alpha = 0.5, width = .25, height = .25, size = 2) +
-  #geom_text_repel(aes(label = Order), size = 3) +
+    alpha = 0.5, width = .15, height = .15, size = 2) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+  geom_text_repel(data = subset(env.pcs.subset, 
+                                (PC1 > 4 | PC1 < -1) | (abs(PC2) > 2)), 
+                  aes(label = OTU, 
+                      color = lubridate::month(date, label = T, abbr = T)), show.legend = F) +
   geom_segment(data = as.data.frame(env.pca$rotation),
                aes(x = 0, y = 0, xend = 3*PC1, yend = 3*PC2),
                arrow = arrow(length = unit(.3, "cm")),
                show.legend = F, alpha = 1, color = "blue") +
   geom_text_repel(data = as.data.frame(env.pca$rotation), 
             aes(x = 3*PC1, y = 3*PC2, label = rownames(env.pca$rotation)),
-            box.padding = .5, point.padding = .5, alpha = 0.9, segment.alpha = 0) +
-  scale_color_viridis(discrete = T) +
+            box.padding = .5, point.padding = .5, alpha = 0.9,
+            segment.alpha = 0) +
   coord_fixed() +
   ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
 
@@ -1490,14 +1505,17 @@ persistent.grs.all %>%
   coord_polar(theta = "x") +
   theme_minimal()
 
+active.max.growths %>% 
+  left_join(subset(design, sample.type == "RNA")) %>% 
+  mutate(month = lubridate::month(date, label = T, abbr = F)) %>% 
+  mutate(rate = round(rate, 3)) %>% 
+  left_join(OTU.tax) %>% 
+  arrange(month) %>% 
+  write_csv("persistent_taxa.csv", col_names = T)
+  
 ```
 
 ```{r}
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install("ggtree")
-
 library(ape)
 library(ggtree)
 library(aplot)
@@ -1518,7 +1536,7 @@ tree_plot <- tree_annotated +
   theme_tree() +
   geom_tiplab(aes(color = lubridate::month(date, label = T)),
               offset = .05, align = T, show.legend = F) +
-  geom_tippoint(aes(color = lubridate::month(date, label = T))) +
+  geom_tippoint(aes(color = lubridate::month(date, label = T)), size = 2) +
   scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) + 
   theme(legend.title = element_blank(),
         legend.position = "none") +
