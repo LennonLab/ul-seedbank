@@ -724,12 +724,14 @@ ggplot(joint_data, aes(x = abund, y = lambda)) +
   ggsave("figures/NFD_individual_OTUs_active.pdf", height = 20, width = 30)
 
 ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
-  geom_hline(yintercept = 0, alpha = 0.2) +
+  geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
   #geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.3) + 
+  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5) + 
   theme(legend.position = "none") + 
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
+  scale_color_discrete_qualitative(palette = "Harmonic") +
+  scale_y_continuous(labels = c(0, -2, -4, -6), breaks = c(0, -2, -4, -6)) +
   ggsave("figures/NFD_OTU_slopes_active.pdf", height = 3/4*6, width = 6)
 
 sbs = OTUs.total.nozero
@@ -755,12 +757,13 @@ ggplot(joint_data, aes(x = abund, y = lambda)) +
   ggsave("figures/NFD_individual_OTUs_total.pdf", height = 20, width = 30)
 
 ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
-  geom_hline(yintercept = 0, alpha = 0.2) +
+  geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
   #geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.3) + 
+  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5) + 
   theme(legend.position = "none") + 
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
+  scale_color_discrete_qualitative(palette = "Harmonic") +
   ggsave("figures/NFD_OTU_slopes_total.pdf", height = 3/4*6, width = 6)
 
 # Generate null distributions
@@ -1150,28 +1153,122 @@ nfd.summary
 # total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 30, num.iter = 999, max.taxa = 100)
 # saveRDS(active.nfd.response, file = "analysis/temp-results/nfd_response_active.rda")
 # saveRDS(total.nfd.response, file = "analysis/temp-results/nfd_response_total.rda")
-active.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_active.rda")
-total.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_total.rda")
 
-nfd.response.df <- rbind.data.frame(
-  cbind.data.frame(subset = "active", active.nfd.response),
-  cbind.data.frame(subset = "total", total.nfd.response))
-nfd.response.df %>% 
-#  filter(p < 0.05) %>% 
-  ggplot(aes(x = taxa, y = strength, color = subset)) +
-  geom_hline(yintercept = 1) +
-  geom_point() +
+#setup parallel backend to use many processors
+# cores=detectCores(logical = F)
+# cl <- makeCluster(cores) #not to overload your computer
+# registerDoParallel(cl)
+# iternum <- 5000
+# 
+# sensitivity_analysis_output <- data.frame(NULL)
+# sorted_taxa <- names(sort(colMeans(OTUs.total.nozero)))
+# for(i in seq(3, ncol(OTUs.total.nozero), by = 4)){
+#   
+#   # calculate total 
+#   OTUs.total.subset <- OTUs.total.nozero[,sorted_taxa[1:i]]
+#   tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+#      get.cov(OTUs.total.subset)
+#   }
+#   obs.nfd <- calc.neg.freq.dep(OTUs.total.subset) %>% 
+#     filter(-fd > 0)  
+#   obs.cov_total <- cov(log(obs.nfd$eq.freq), log(-obs.nfd$fd))
+#   total_df <- cbind.data.frame(N_tax = i, 
+#         N_sim = iternum,
+#         subset = "total",
+#         null_sd = sd(tot.nd), 
+#         null_min = min(tot.nd), 
+#         null_max = max(tot.nd),
+#         null_mean = mean(tot.nd),
+#         obs_cov = obs.cov_total)
+#         
+#   
+#   # calculate active
+#   OTUs.active.subset <- OTUs.active.nozero[,sorted_taxa[1:i]]
+#   act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+#      get.cov(OTUs.active.subset)
+#   }
+#   obs.nfd <- calc.neg.freq.dep(OTUs.active.subset) %>% 
+#     filter(-fd > 0)  
+#   obs.cov_active <- cov(log(obs.nfd$eq.freq), log(-obs.nfd$fd))
+#   active_df <- cbind.data.frame(N_tax = i, 
+#         N_sim = iternum,
+#         subset = "active",
+#         null_sd = sd(act.nd), 
+#         null_min = min(act.nd), 
+#         null_max = max(act.nd),
+#         null_mean = mean(act.nd),
+#         obs_cov = obs.cov_active)
+#   
+#   i_out <- rbind.data.frame(active_df, total_df)
+#   sensitivity_analysis_output <- rbind.data.frame(sensitivity_analysis_output, i_out)
+#   
+# }
+# 
+# #stop cluster
+# stopCluster(cl)
+# 
+# write_csv(sensitivity_analysis_output, "analysis/sensitivity_analysis.csv")
+
+sensitivity_analysis_output <- read_csv("analysis/sensitivity_analysis.csv")
+
+sensitivity_analysis_output %>% 
+  ggplot(aes(x = N_tax, y = obs_cov/null_mean, color = subset)) + 
+  geom_point() + 
+  geom_line()
+
+sensitivity_analysis_output %>% 
+  ggplot(aes(x = N_tax, 
+             y = (obs_cov - null_mean)/null_sd, 
+             color = subset, 
+             shape = subset)) + 
+  geom_hline(yintercept = c(2,-2), alpha = 0.2, linetype = "dashed") +
+  geom_point(alpha = .8, size = 2) + 
+  annotate("text", x = 85, y = -2.5, label = "Total", size = 4.5, color = "black") +
+  annotate("text", x = 85, y = -5.5, label = "Active", size = 4.5, color = "black") +
   geom_line() +
-  labs(x = "Number of OTUs included in analysis",
-       y = "Strength of NFD \n(observed / null mean)") +
-  ggsave("figures/nfd_sensitivity.pdf", width = 6, height = 4)
+  theme(legend.position = "none") +
+  scale_x_continuous(limits = c(0, 87)) +
+  scale_y_continuous(limits = c(NA, 2)) +
+  scale_color_discrete() +
+  labs(x = "Number of taxa", 
+       y = "Standardized Effect Size") + 
+  ggsave("figures/sensitivity_analysis_SES.pdf", width = 6, height = 5)
 
-cbind.data.frame(taxa = active.nfd.response$taxa, 
-      strength = active.nfd.response$strength / total.nfd.response$strength) %>% 
-  ggplot(aes(x = taxa, y = strength)) +
-  geom_point() +
-  geom_abline(slope = 0, intercept = 1, color = "gray") +
-  geom_smooth(method = "loess", se = F) 
+sensitivity_analysis_output %>% 
+  ggplot(aes(x = N_tax, y = obs_cov, color = subset)) + 
+  geom_point(alpha = .8, size = 2) + 
+  annotate("text", x = 60, y = -.3, label = "Total", size = 4.5, color = "black") +
+  annotate("text", x = 20, y = -.7, label = "Active", size = 4.5, color = "black") +
+  geom_line() +
+  theme(legend.position = "none") +
+  scale_color_discrete() +
+  labs(x = "Number of taxa", 
+       y = "Observed Cov(NFD, Eq. Freq.)") + 
+  ggsave("figures/sensitivity_analysis_obsCov.pdf", width = 6, height = 5)
+
+
+# active.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_active.rda")
+# total.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_total.rda")
+# 
+# nfd.response.df <- rbind.data.frame(
+#   cbind.data.frame(subset = "active", active.nfd.response),
+#   cbind.data.frame(subset = "total", total.nfd.response))
+# nfd.response.df %>% 
+# #  filter(p < 0.05) %>% 
+#   ggplot(aes(x = taxa, y = strength, color = subset)) +
+#   geom_hline(yintercept = 1) +
+#   geom_point() +
+#   geom_line() +
+#   labs(x = "Number of OTUs included in analysis",
+#        y = "Strength of NFD \n(observed / null mean)") +
+#   ggsave("figures/nfd_sensitivity.pdf", width = 6, height = 4)
+# 
+# cbind.data.frame(taxa = active.nfd.response$taxa, 
+#       strength = active.nfd.response$strength / total.nfd.response$strength) %>% 
+#   ggplot(aes(x = taxa, y = strength)) +
+#   geom_point() +
+#   geom_abline(slope = 0, intercept = 1, color = "gray") +
+#   geom_smooth(method = "loess", se = F) 
 ```
 
 # Reappeareance Scores
