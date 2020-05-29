@@ -87,7 +87,7 @@ OTU.tax <- read.tax(taxonomy = taxon, format = "rdp")
 env.data <- read.table("data/ul-seedbank.env.txt", sep="\t", header=TRUE)
 env.data$date <- as.Date(parse_date_time(env.data$date, "m d y"))
 env.data$doc[which(env.data$doc == "**")] <- NA
-env.data$doc <- as.numeric(env.data$doc)
+env.data$doc <- as.numeric(as.character(env.data$doc))
 summary(env.data)
 design <- left_join(design, env.data[,c("sample.id", "date")])
 env.data <- env.data[-which(!(env.data$date %in% design$date)),]
@@ -97,6 +97,29 @@ OTUs <- OTUs[str_which(rownames(OTUs), "UL"),]
 
 # make sure OTU table matches up with design order
 OTUs <- OTUs[match(design$sample.name, rownames(OTUs)),]
+```
+
+# envplot
+```{r}
+env.data %>% select(date, temp, spc, secchi, ph, chla, tp, tn, doc) %>% 
+  mutate(tn = log10(tn), tp = log10(tp), chla = log10(chla)) %>% 
+  rename("Log10[Chl a (µg/L)]" = chla,
+         "Dissolved organic carbon (mg/L)" = doc,
+         #"Dissolved oxygen (mg/L)" = oxygen,
+         "pH" = ph,
+         "Secchi depth (m)" = secchi,
+         "Specific conductivity (µS)" = spc,
+         "Temperature (°C)" = temp,
+         "Log10[Total nitrogen (mg/L)]" = tn,
+         "Log10[Total phosphorus (µg/L)]" = tp) %>% 
+  gather(-date, key = "variable", value = "val") %>% 
+  ggplot(aes(x = date, y = val)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line() +
+  scale_x_date(date_labels = "%b\n%Y", date_breaks = "6 months") +
+  labs(x = "", y = "") +
+  facet_wrap(~variable, scales = "free_y", ncol = 2) + 
+  ggsave("figures/env_data.pdf", width = 8, height = 8)
 ```
 
 # transform OTUs
@@ -274,7 +297,14 @@ active.spec.scores.pc$name <- fam.name.vec
 
 scale.arrows0 <- 1.5
 
-fig.pca <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+pc_labs <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>%
+  filter(lubridate::month(date) %in% c(4, 7, 10, 1)) %>% 
+  mutate(lab = paste(lubridate::month(date, label = T), lubridate::year(date))) %>% 
+  group_by(lab) %>% 
+  summarize(PC1mean = mean(PC1), PC2mean = mean(PC2))
+  
+
+fig.pca <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df) %>% 
   ggplot(aes(x = PC1, y = PC2)) + 
   geom_hline(aes(yintercept = 0), alpha = 0.1) + 
   geom_vline(aes(xintercept = 0), alpha = 0.1) +
@@ -307,6 +337,7 @@ fig.pca <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df
   xlab(paste("PC 1 (",var1,"%)", sep = "")) + 
   ylab(paste("PC 2 (",var2,"%)", sep = "")) +
   coord_fixed() +
+  geom_text_repel(data = pc_labs, mapping = aes(x = PC1mean, y = PC2mean, label = lab)) +
   ggsave("figures/fig1a.pdf", bg = "white", height = 6, width = 8)
 fig.pca
 
@@ -397,7 +428,8 @@ active.rda.0 <- rda(OTUs.rel.act.subs ~ 1, data = aem.subs)
 envfit(active.rda.0, aem.subs)
 
 time.mod <- model.matrix(~ -1 + AEM1 + AEM2 + AEM3 + AEM4 + AEM5 + AEM6 + AEM7 + AEM15, data = aem.subs)
-env.mod <- model.matrix(~ temp + doc + oxygen + spc + ph + secchi, data = env.preds)
+
+env.mod <- model.matrix(~ temp + doc + spc + secchi + tn + tp + ph, data = env.preds)
 
 # RDA without controlling for time
 active.rda <- rda(OTUs.rel.act.subs ~ env.mod)
@@ -405,7 +437,7 @@ active.rda <- rda(OTUs.rel.act.subs ~ env.mod)
 active.rda.sum <- summary(active.rda)
 
 env.vecs <- cbind.data.frame(center = 0, active.rda.sum$biplot[,c(1:2)])
-rownames(env.vecs) <- c("Temp", "DOC", "DO", "SpC", "pH", "secchi")
+rownames(env.vecs) <- c("Temp", "DOC", "Sp. Cond.", "Secchi depth", "TN", "TP", "pH")
 spec.scores <- cbind.data.frame(center = 0, scores(active.rda)$species)
 site.scores <- as.data.frame(scores(active.rda)$sites)
 
@@ -443,16 +475,16 @@ fig.rda <-
                 color = lubridate::month(date, label = T, abbr = T))) + 
   scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.2), 9)) +
   scale_shape_manual(values = rep(15:18,3)) +
-  # Add species scores as vectors
-  geom_segment(data = active.spec.scores, 
-               aes(x = center, y = center, 
-                   xend = scale.arrows*RDA1, yend = scale.arrows*RDA2), 
-               alpha = .5, color = "black",
-             arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"), 
-             show.legend = F) + 
-  geom_text_repel(data = active.spec.scores, 
-               aes(x = scale.arrows*RDA1, y = scale.arrows*RDA2), 
-               label = active.spec.scores$name, alpha = 1, point.padding = .5) + 
+  # # Add species scores as vectors
+  # geom_segment(data = active.spec.scores, 
+  #              aes(x = center, y = center, 
+  #                  xend = scale.arrows*RDA1, yend = scale.arrows*RDA2), 
+  #              alpha = .5, color = "black",
+  #            arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"), 
+  #            show.legend = F) + 
+  # geom_text_repel(data = active.spec.scores, 
+  #              aes(x = (scale.arrows +.1)*RDA1, y = (scale.arrows+.1)*RDA2), 
+  #              label = active.spec.scores$name, alpha = 1, point.padding = .25) + 
 
   # Add environmental vectors in blue
   geom_segment(data = env.vecs,
@@ -460,12 +492,12 @@ fig.rda <-
                  xend = scale.arrows2*RDA1, 
                  yend = scale.arrows2*RDA2),
              arrow = arrow(angle = 20, length = unit(.1, "inches"), type = "open"),
-             show.legend = F, alpha = .5, color = "blue") +
+             show.legend = F, alpha = .5, color = "black") +
   
-  geom_text(data = env.vecs, 
-                  aes(x = (scale.arrows2+.1)*RDA1, y = (scale.arrows2+.1)*RDA2),
-                    label = rownames(env.vecs), color = "blue", nudge_y = c(.1,0,0,0,0,0), nudge_x = c(.2,0,0,0,0,0),
-                   segment.alpha = 0.3, alpha = 1, point.padding = .5) +
+  geom_text_repel(data = env.vecs, 
+                  aes(x = (scale.arrows2)*RDA1, y = (scale.arrows2)*RDA2),
+                    label = rownames(env.vecs), color = "black",
+                   segment.alpha = 0.3, alpha = 1, point.padding = .25) +
   
    
   coord_fixed() + 
@@ -616,25 +648,7 @@ get.cov <- function(comm){
 }
 
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
-env.data %>% select(date, temp, spc, oxygen, salinity, secchi, ph, chla, tp, tn, doc) %>% 
-  rename("Chl a (mg/L)" = chla,
-         "Dissolved organic carbon (mg/L)" = doc,
-         "Dissolved oxygen (mg/L)" = oxygen,
-         "pH" = ph,
-         "Salinity (mg/L)" = salinity,
-         "Secchi depth (m)" = secchi,
-         "Specific conductivity (µS)" = spc,
-         "Temperature (°C)" = temp,
-         "Total nitrogen (mg/L)" = tn,
-         "Total phosphorus (mg/L)" = tp) %>% 
-  gather(-date, key = "variable", value = "val") %>% 
-  ggplot(aes(x = date, y = val)) + 
-  geom_point(alpha = 0.5) + 
-  geom_line() +
-  scale_x_date(date_labels = "%b\n%Y", date_breaks = "6 months") +
-  labs(x = "", y = "") +
-  facet_wrap(~variable, scales = "free_y", ncol = 2) + 
-  ggsave("figures/env_data.pdf", width = 8, height = 8)
+
 
 # separate OTUs present across the nearly whole time series
 OTUs.total.persistent <- OTUs.total[,which(
@@ -662,12 +676,12 @@ OTUs.active.nozero <- replace(OTUs.active.persistent, which(OTUs.active.persiste
 nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
 nfd.active %>% filter(-fd > 0) -> nfd.active
 nfd.active.cov <- cov(log(nfd.active$eq.freq), log(-nfd.active$fd))
-nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
-  geom_point(alpha = 0.5) + 
+nfdactivefig <- nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
+  geom_point(alpha = 0.5, size = 3) + 
   scale_y_log10() + 
   scale_x_log10() +
-  geom_smooth(method = "lm") + 
-  ylab("Negative Frequency Dependence") + 
+  geom_smooth(method = "lm", color = "black") + 
+  ylab("Strength of NFD") + 
   xlab("Equilibrium Frequency") +
   ggsave("figures/NFD_active.pdf", width = 6, height = 4.5)
 
@@ -723,16 +737,19 @@ ggplot(joint_data, aes(x = abund, y = lambda)) +
        y = expression(Ln(N[t+1]/N[t]))) + 
   ggsave("figures/NFD_individual_OTUs_active.pdf", height = 20, width = 30)
 
-ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
+nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
   geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
   #geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5) + 
+  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5, size = 1) + 
   theme(legend.position = "none") + 
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
   scale_color_discrete_qualitative(palette = "Harmonic") +
   scale_y_continuous(labels = c(0, -2, -4, -6), breaks = c(0, -2, -4, -6)) +
   ggsave("figures/NFD_OTU_slopes_active.pdf", height = 3/4*6, width = 6)
+
+plot_grid(nfdactiveslopesfig, nfdactivefig, ncol = 1, labels = "AUTO") +
+  ggsave("figures/figS1.pdf", width = 6, height = 8)
 
 sbs = OTUs.total.nozero
 y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
@@ -766,6 +783,9 @@ ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) +
   scale_color_discrete_qualitative(palette = "Harmonic") +
   ggsave("figures/NFD_OTU_slopes_total.pdf", height = 3/4*6, width = 6)
 
+```
+
+```{r}
 # Generate null distributions
 iternum <- 5000
 # tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
@@ -1322,8 +1342,21 @@ reappearance.score <- function(DNA, RNA){
 
 otu.reap <- reappearance.score(DNA = OTUs.total, RNA = OTUs.active)
 otu.pres <- colSums(OTUs.total.pa)
-otu.total.relabund <- colMeans(decostand((OTUs.total), method = "total"))
-otu.active.relabund <- colMeans(decostand((OTUs.active), method = "total"))
+otu.total.relabund2 <- colMeans(decostand((OTUs.total), method = "total"))
+otu.active.relabund2 <- colMeans(decostand((OTUs.active), method = "total"))
+
+# Compute mean without zeroes
+nzmean <- function(x) {
+    if (all(x==0)) 0 else mean(x[x!=0])
+}
+
+otu.total.relabund <- apply(decostand((OTUs.total), method = "total"),
+                            MARGIN = 2,
+                            FUN = nzmean)
+otu.active.relabund <- apply(decostand((OTUs.active), method = "total"),
+                            MARGIN = 2,
+                            FUN = nzmean)
+
 
 persistent_taxa <- colnames(OTUs.total.persistent)
 
@@ -1551,7 +1584,7 @@ maxgrowth <- function(sbs){
     rate = max.growths, sample = max.growth.time))
 }
 
-env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
+env.vars <- env.data[c("temp", "spc", "secchi", "ph", "tp", "tn", "doc")]
 env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
 env.pca <- prcomp(na.omit(env.vars), scale. = T)
 
@@ -1585,7 +1618,7 @@ env.pcs.subset %>%
             box.padding = .5, point.padding = .5, alpha = 0.9,
             segment.alpha = 0) +
   coord_fixed() +
-  ggsave("figures/max_growth_envs.pdf", bg = "white", width = 8, height = 8)
+  ggsave("figures/figS2.pdf", bg = "white", width = 8, height = 8)
 
 
 getgrs <-  function(sbs){
