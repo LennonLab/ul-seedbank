@@ -158,16 +158,31 @@ data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.act
   ggplot(aes(x = date, y = diversity_ratio)) + 
   # geom_vline(xintercept = as.numeric(as.Date(c("2014-01-01", "2015-01-01"))),
   #            linetype = 2, color = "grey", alpha = 0.8) +
+  # geom_rect(mapping = aes(xmin = as_date("2013-04-01"), xmax = as_date("2013-07-31"),
+  #                         ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+  #           fill = "gray90", alpha = 0.1) +
+  # geom_rect(mapping = aes(xmin = as_date("2014-04-01"), xmax = as_date("2014-07-31"),
+  #                         ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+  #           fill = "gray90", alpha = 0.1) +
+  # geom_rect(mapping = aes(xmin = as_date("2015-04-01"), xmax = max(date),
+  #                         ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+  #           fill = "gray90", alpha = 0.1) + 
+  geom_rect(mapping = aes(xmin = as_date("2013-10-01"), xmax = as_date("2014-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "gray90", alpha = 0.1) +
+  geom_rect(mapping = aes(xmin = as_date("2014-10-01"), xmax = as_date("2015-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "gray90", alpha = 0.1) +
   geom_line(size = .7, alpha = .5, show.legend = F) +
-  geom_point(aes(color = lubridate::month(date, label = T)), size = 3, alpha = 0.7) +
+  geom_point(aes(color = lubridate::month(date, label = T)), size = 3, alpha = 0.8) +
   scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
-  geom_smooth(alpha = 0.3, color = "black", span = .5) +
+  geom_smooth(alpha = 0.5, color = "black", span = .5) +
   # ylab(expression(paste(alpha,"-diversity ratio (total / active richness)"))) +
-  ylab("Richness ratio (total : active)") +
-  xlab("") +
+  ylab("Seed bank richness ratio \n(total : active)") +
+  xlab("Time") +
   scale_x_date(date_breaks = "3 month", 
                date_minor_breaks = "1 month", 
-               date_labels = "%b %Y") +
+               date_labels = "%b") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "none") +
   #scale_color_manual("Community Subset", values = c("#b2df8a", "#1f78b4")) +
