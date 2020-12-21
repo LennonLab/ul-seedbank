@@ -591,8 +591,8 @@ fig.rda
 #   ggsave("figures/fig1b2.pdf", bg = "white", height = 6, width = 8)
 
 # plot combined figure
-plot_grid(fig.pca, fig.rda + theme(legend.position = "none"), align = "hv", axis = "lr", ncol = 2, labels = "AUTO") +
-  ggsave("figures/fig1.pdf", width = 12, height = .6*4/4*12)
+plot_grid(fig.pca, fig.rda + theme(legend.position = "none"), align = "hv", axis = "lr", ncol = 1, labels = "AUTO") +
+  ggsave("figures/fig1.pdf", height = 9.25, width = 5.5)
 
 ## so this plot shows, after controlling for temporal autocorrelation, which environmental drivers are most important for some taxa
 ```
@@ -1675,15 +1675,37 @@ persistent.grs.all <- persistent.grs.all %>%
 # this normalizes to jan 1 of each year for the avg growth rates.
 persistent.grs.all$date <- lubridate::parse_date_time(paste(2014, persistent.grs.all$week, 'Wed', sep="/"),'Y/W/a') %>% as_date(.) %>% - 7
 persistent.grs.all$Genus <- str_replace(persistent.grs.all$Genus, coll("_unclassified"), " sp.")
-
-persistent.grs.all %>%   
-  mutate(mean.growth = ifelse(mean.growth<0, 0, mean.growth)) %>% 
+peaks_in_df <- persistent.grs.all %>% 
+  filter(ismax) %>% 
+  mutate(peaks_in = as_date(date)) %>% 
+  select(OTU, peaks_in)
+persistent.grs.all <- persistent.grs.all %>% 
+  mutate(mean.growth = mean.growth / 7,
+         max.growth = max.growth / 7) # convert to /day
+persistent.grs.all <- persistent.grs.all %>%  
+  left_join(peaks_in_df) 
+seasonal_cols <- shifter(darken(plasma(12, direction = -1),.1))
+dup_end <- persistent.grs.all %>% filter(date == min(date)) %>% 
+  mutate(date = date + 364)
+persistent.grs.all %>% 
+  bind_rows(dup_end) %>% 
+  #mutate(mean.growth = ifelse(mean.growth<0, 0, mean.growth)) %>% 
   ggplot(aes(x = date, group = OTU)) +
-  geom_line(aes(y = mean.growth), alpha = 0.1) + 
+  geom_line(aes(y = mean.growth), alpha = 0.1, color = "gray70") + 
+  geom_line(data = . %>% filter(OTU == "Otu00018"),
+            aes(y = mean.growth, color = lubridate::month(peaks_in, label = T))) +
+  geom_line(data = . %>% filter(OTU == "Otu00017"),
+            aes(y = mean.growth, color = lubridate::month(peaks_in, label = T))) +
+  # geom_line(data = . %>% filter(OTU == "Otu00022"),
+  #           aes(y = mean.growth, color = lubridate::month(peaks_in, label = T))) +
+  geom_line(data = . %>% filter(OTU == "Otu00001"),
+            aes(y = mean.growth, color = lubridate::month(peaks_in, label = T))) +
   geom_point(data = subset(persistent.grs.all, ismax == T), 
              aes(y = max.growth, 
                  color = lubridate::month(date, label = T)), alpha = 0.7, size = 3) + 
-  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9), 
+                     breaks = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) +
   #coord_flip() + 
   # geom_ribbon(aes(group = NULL, col = NULL, ymax = 0, ymin = -5), 
   #             fill = "white", col = "white", alpha = 0.8) +
@@ -1693,15 +1715,18 @@ persistent.grs.all %>%
   #           nudge_y = 0, box.padding = .5, max.iter = 10000,
   #           size = 2, color = "black", segment.alpha = .5) +
   labs(x = "", 
-       y = expression(Mean~growth~rate~(wk^-1))) +
-  scale_x_date(date_labels = "%b", breaks = "1 month") +
+       y = expression(Mean~growth~rate~(d^-1))) +
+  scale_x_date(date_labels = "%b", breaks = "1 month", 
+               labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) +
   coord_polar(theta = "x") +
   theme_bw() +
   theme(legend.position = "none", 
         panel.grid.minor.y = element_blank(),
-        panel.grid.minor.x = element_blank())+
+        #panel.grid.major.y = element_blank(),
+        panel.grid.minor.x = element_blank()) +
   #scale_y_continuous(limits = c(-5, 12)) +
-   ggsave("figures/fig2.pdf", bg = "white", width = 6, height = 6)
+   ggsave("figures/fig2.pdf", bg = "white", width = 4.5, height = 4.5)
   # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
 
 persistent.grs.all %>%
