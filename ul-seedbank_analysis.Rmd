@@ -1475,6 +1475,76 @@ cbind.data.frame(times_inactive = otu.reap, presences = otu.pres) %>%
 subset(OTU.tax, OTU %in% seedbank.taxa$OTU)
 ```
 
+# compare with a null model
+```{r}
+shuffle.ts.total <- function(total.spec.ts){
+  ts.length = length((total.spec.ts)) / 2
+  sample.index = sample(1:ts.length)
+  return(total.spec.ts[c(sample.index, (sample.index + ts.length))])
+}
+
+reap.nullmod <- function(comm = OTUs, samp.design = design, n = 10){
+  
+  null_correlations <- numeric(length = n)
+  # loop through null models
+  for(i in 1:n){
+    
+    # generate null model and separate into corresponding DNA and RNA sets
+    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts.total)
+    nullcom_active <- nullcom[which(samp.design$sample.type == "RNA"),]
+    nullcom_total <- nullcom[which(samp.design$sample.type == "DNA"),]
+    
+    
+    otu.reap <- reappearance.score(DNA = nullcom_total, RNA = nullcom_active)
+    otu.pres <- colSums(nullcom_total > 0)
+    otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
+                            MARGIN = 2,
+                            FUN = nzmean)
+    otu.active.relabund <- apply(decostand((nullcom_active), method = "total"),
+                            MARGIN = 2,
+                            FUN = nzmean)
+
+
+    to_correlate <- cbind.data.frame(OTU = colnames(nullcom_total),
+                 times_activated = otu.reap, 
+                 times_present = otu.pres,
+                 relabund_active = otu.active.relabund,
+                 relabund_total = otu.total.relabund) %>%
+    filter(times_present > 0) %>% 
+    filter(relabund_total > 0) %>% 
+    filter(relabund_active > 0) %>% 
+    filter(times_present > 1) %>% 
+    mutate(percent_transition = times_activated/times_present) %>% 
+    mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Persistent via seed bank")) %>% 
+    mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
+    filter(persistent == "Persistent") %>% 
+    gather(relabund_active, relabund_total, key = "subset", value = "relabund") %>% 
+    mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
+    filter(subset == "Active Portion")  
+    
+    
+    # 
+    # ggplot(aes(y = times_activated, x = relabund)) + 
+    # geom_jitter(size = 3, alpha = 0.5) + 
+    # geom_smooth(color = "black", method = "lm") + 
+    # #facet_wrap(~subset, ncol = 1) +
+    # theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
+    # ylab("Reactivations from seed bank") +
+    # xlab("Average relative abundance") +
+    # scale_x_log10()
+    
+    null_correlations[i] <- cor(to_correlate$times_activated, to_correlate$relabund)
+    gc()
+
+  }
+  
+  return(null_correlations)
+}
+
+null_dist <- reap.nullmod(n = 1000)
+hist(null_dist)
+```
+
 # Taxa Time Relationship
 ```{r}
 # ttr.calc <- function(comm){
