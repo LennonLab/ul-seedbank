@@ -806,19 +806,19 @@ iternum <- 5000
 # tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 # act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
 
-#setup parallel backend to use many processors
-cores=detectCores(logical = F)
-cl <- makeCluster(cores) #not to overload your computer
-registerDoParallel(cl)
-
-tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-   get.cov(OTUs.total.nozero)
-}
-act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-   get.cov(OTUs.active.nozero)
-}
-#stop cluster
-stopCluster(cl)
+# #setup parallel backend to use many processors
+# cores=detectCores(logical = F)
+# cl <- makeCluster(cores) #not to overload your computer
+# registerDoParallel(cl)
+# 
+# tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+#    get.cov(OTUs.total.nozero)
+# }
+# act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+#    get.cov(OTUs.active.nozero)
+# }
+# #stop cluster
+# stopCluster(cl)
 
 
 # Compare observed with null
@@ -1323,7 +1323,7 @@ calc.score <- function(species){
 
 (OTUs.total - OTUs.active)[,1]
 
-reappearance.score <- function(DNA, RNA){
+reappearance.score <- function(DNA, RNA, quiet = TRUE){
   
   
   otu.dna.pa <- decostand(DNA, method = "pa")
@@ -1349,7 +1349,7 @@ reappearance.score <- function(DNA, RNA){
       }
     }
     otuscores[j] <- otuscore
-    print(paste("completed otu #", j))
+    if(quiet != TRUE) print(paste("completed otu #", j))
   }
   
   return(otuscores)
@@ -1483,20 +1483,34 @@ shuffle.ts.total <- function(total.spec.ts){
   return(total.spec.ts[c(sample.index, (sample.index + ts.length))])
 }
 
-reap.nullmod <- function(comm = OTUs, samp.design = design, n = 10){
+reap.nullmod <- function(DNAcomm = OTUs.total,
+                         RNAcomm = OTUs.active,
+                         samp.design = design, n = 10, algorithm = "c0_samp"){
   
   null_correlations <- numeric(length = n)
+  null_data <- data.frame()
+  
+  # define null model
+  DNAnullcom <- nullmodel(DNAcomm, method = algorithm)
+  RNAnullcom <- nullmodel(RNAcomm, method = algorithm)
+  
+  # sim
+  print("Generating DNA null models.")
+  DNAsims <- as.array(simulate(DNAnullcom, nsim = n))
+  print("Generating RNA null models.")
+  RNAsims <- as.array(simulate(RNAnullcom, nsim = n))
+  
   # loop through null models
+  print("Analyzing sim output:")
   for(i in 1:n){
     
-    # generate null model and separate into corresponding DNA and RNA sets
-    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts.total)
-    nullcom_active <- nullcom[which(samp.design$sample.type == "RNA"),]
-    nullcom_total <- nullcom[which(samp.design$sample.type == "DNA"),]
+    nullcom_active <- RNAsims[,,i]
+    nullcom_total <- DNAsims[,,i]
     
     
     otu.reap <- reappearance.score(DNA = nullcom_total, RNA = nullcom_active)
     otu.pres <- colSums(nullcom_total > 0)
+    
     otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
                             MARGIN = 2,
                             FUN = nzmean)
@@ -1523,26 +1537,37 @@ reap.nullmod <- function(comm = OTUs, samp.design = design, n = 10){
     filter(subset == "Active Portion")  
     
     
-    # 
-    # ggplot(aes(y = times_activated, x = relabund)) + 
-    # geom_jitter(size = 3, alpha = 0.5) + 
-    # geom_smooth(color = "black", method = "lm") + 
+    # to_correlate %>%
+    # ggplot(aes(y = times_activated, x = relabund)) +
+    # geom_jitter(size = 3, alpha = 0.5) +
+    # geom_smooth(color = "black", method = "lm") +
     # #facet_wrap(~subset, ncol = 1) +
     # theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
     # ylab("Reactivations from seed bank") +
     # xlab("Average relative abundance") +
     # scale_x_log10()
+    print(paste("Completed sim", i, "of", n,"."))
     
+    null_data <- rbind.data.frame(null_data, cbind.data.frame(sim = i, to_correlate))
     null_correlations[i] <- cor(to_correlate$times_activated, to_correlate$relabund)
     gc()
 
   }
   
-  return(null_correlations)
+  return(list(corr = null_correlations,
+              dat = null_data))
 }
 
+# Run Sims
 null_dist <- reap.nullmod(n = 1000)
-hist(null_dist)
+
+# analyze null dist
+hist(null_dist$corr)
+null_dist$dat %>% 
+  ggplot(aes(x = relabund, y = times_activated, group = sim)) + 
+  geom_point() + 
+  geom_smooth(method = "loess") +
+  scale_x_log10()
 ```
 
 # Taxa Time Relationship
