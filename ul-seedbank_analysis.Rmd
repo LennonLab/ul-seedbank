@@ -1461,7 +1461,7 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
   scale_x_log10() +
-  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6)
+  ggsave("figures/fig5a.pdf", width = 6, height = 3/4*6)
 
 obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
@@ -1480,7 +1480,7 @@ obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
   filter(subset == "Active Portion")
   
-cor(obs_dat$times_activated, obs_dat$relabund)
+obs_corr <- cor(obs_dat$times_activated, obs_dat$relabund)
 
 # pull out taxa who are present > 50% of time but inactive > 50% of time
 # these may be potential seed bankers or sink populations form soils
@@ -1591,19 +1591,30 @@ while(nsims > 0){
   print(paste("There are", nsims, "simulations remaining."))
 }
 
+saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
+
 # analyze null dist
-hist(null_dist$corr)
-null_dist$dat %>% 
+hist(null_dist_tot$corr, xlim = c(-.35,-.1))
+abline(v = obs_corr)
+
+null_dist_toplot <- null_dist_tot$dat %>% 
   mutate(sim = as.character(sim)) %>% 
   bind_rows(bind_cols(sim = "observed", obs_dat)) %>% 
-  mutate(obsim = ifelse(sim == "observed", "Observed", "Simulated")) %>% 
+  mutate(obsim = ifelse(sim == "observed", "Observed", "Simulated")) 
+
+null_dist_toplot %>% 
   ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
-  geom_jitter(alpha = 0.25, size = 3) + 
-  geom_line(size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
+  geom_jitter(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.05) +
+  geom_line(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
+  geom_jitter(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
+  geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = .5, method = "loess", se = F) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
-  scale_x_log10()
+  scale_x_log10() + 
+  scale_color_manual(values = c("black", "gray70")) +
+  #scale_alpha_discrete(range = c(.8, 0.1)) + 
+  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6)
   
 corr
 ```
