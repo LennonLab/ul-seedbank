@@ -1462,8 +1462,25 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   xlab("Average relative abundance") +
   scale_x_log10() +
   ggsave("figures/fig5.pdf", width = 6, height = 3/4*6)
+
+obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
+                 times_activated = otu.reap, 
+                 times_present = otu.pres,
+                 relabund_active = otu.active.relabund,
+                 relabund_total = otu.total.relabund) %>%
+  filter(times_present > 0) %>% 
+  filter(relabund_total > 0) %>% 
+  filter(relabund_active > 0) %>% 
+  filter(times_present > 1) %>% 
+  mutate(percent_transition = times_activated/times_present) %>% 
+  mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Persistent via seed bank")) %>% 
+  mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
+  filter(persistent == "Persistent") %>% 
+  gather(relabund_active, relabund_total, key = "subset", value = "relabund") %>% 
+  mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
+  filter(subset == "Active Portion")
   
-  
+cor(obs_dat$times_activated, obs_dat$relabund)
 
 # pull out taxa who are present > 50% of time but inactive > 50% of time
 # these may be potential seed bankers or sink populations form soils
@@ -1559,15 +1576,36 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
 }
 
 # Run Sims
-null_dist <- reap.nullmod(n = 1000)
+null_dist_tot <- list(corr = vector(), dat = data.frame()) # <- reap.nullmod(n = 100, algorithm = "c0_ind")
+
+nsims = 1000
+while(nsims > 0){
+  # run this batch of sims
+  sims_to_run <- min(100, nsims)
+  null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_ind")
+  
+  null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
+  null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
+  
+  nsims <- nsims - sims_to_run
+  print(paste("There are", nsims, "simulations remaining."))
+}
 
 # analyze null dist
 hist(null_dist$corr)
 null_dist$dat %>% 
-  ggplot(aes(x = relabund, y = times_activated, group = sim)) + 
-  geom_point() + 
-  geom_smooth(method = "loess") +
+  mutate(sim = as.character(sim)) %>% 
+  bind_rows(bind_cols(sim = "observed", obs_dat)) %>% 
+  mutate(obsim = ifelse(sim == "observed", "Observed", "Simulated")) %>% 
+  ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
+  geom_jitter(alpha = 0.25, size = 3) + 
+  geom_line(size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
+  theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
+  ylab("Reactivations from seed bank") +
+  xlab("Average relative abundance") +
   scale_x_log10()
+  
+corr
 ```
 
 # Taxa Time Relationship
