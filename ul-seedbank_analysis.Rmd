@@ -1608,7 +1608,7 @@ null_dist_toplot %>%
   geom_line(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
   geom_jitter(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
   geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = .5, method = "loess", se = F) +
-  theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
+  theme(legend.position = c(.85, .85), legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
   scale_x_log10() + 
