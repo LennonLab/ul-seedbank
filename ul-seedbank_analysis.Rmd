@@ -1614,7 +1614,8 @@ null_dist_toplot %>%
   scale_x_log10() + 
   scale_color_manual(values = c("black", "gray70")) +
   #scale_alpha_discrete(range = c(.8, 0.1)) + 
-  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6)
+  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6) +
+  ggsave("figures/fig5.png", width = 6, height = 3/4*6, dpi = 500)
   
 corr
 ```
