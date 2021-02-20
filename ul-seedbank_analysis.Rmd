@@ -1454,7 +1454,7 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
   filter(subset == "Active Portion") %>% 
   ggplot(aes(y = times_activated, x = relabund)) + 
-  geom_jitter(size = 3, alpha = 0.5) + 
+  geom_point(size = 3, alpha = 0.5) + 
   geom_smooth(color = "black", span = 1) + 
   #facet_wrap(~subset, ncol = 1) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
@@ -1575,24 +1575,24 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
               dat = null_data))
 }
 
-# Run Sims
-null_dist_tot <- list(corr = vector(), dat = data.frame()) # <- reap.nullmod(n = 100, algorithm = "c0_ind")
+# # Run Sims
+# null_dist_tot <- list(corr = vector(), dat = data.frame()) # <- reap.nullmod(n = 100, algorithm = "c0_ind")
+# 
+# nsims = 1000
+# while(nsims > 0){
+#   # run this batch of sims
+#   sims_to_run <- min(100, nsims)
+#   null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_ind")
+#   
+#   null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
+#   null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
+#   
+#   nsims <- nsims - sims_to_run
+#   print(paste("There are", nsims, "simulations remaining."))
+# }
 
-nsims = 1000
-while(nsims > 0){
-  # run this batch of sims
-  sims_to_run <- min(100, nsims)
-  null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_ind")
-  
-  null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
-  null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
-  
-  nsims <- nsims - sims_to_run
-  print(paste("There are", nsims, "simulations remaining."))
-}
-
-saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
-
+#saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
+null_dist_tot <- readRDS("analysis/null_dists_reactivations.rda")
 # analyze null dist
 hist(null_dist_tot$corr, xlim = c(-.35,-.1))
 abline(v = obs_corr)
@@ -1606,8 +1606,8 @@ null_dist_toplot %>%
   ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
   geom_jitter(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.05) +
   geom_line(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
-  geom_jitter(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
-  geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = .5, method = "loess", se = F) +
+  geom_point(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
+  geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = 1, method = "loess", se = F) +
   theme(legend.position = c(.85, .85), legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
