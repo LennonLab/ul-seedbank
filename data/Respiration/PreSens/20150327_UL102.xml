@@ -1,0 +1,32 @@
+<PRESENS><Admin><ProjectName>20150327_UL102</ProjectName><FileName>20150327_UL102.xml</FileName><UserComment>A1-A4 = bacterial, B1-B4 = planktonic, C1-C2 = ePure</UserComment><MIOMReport>@m02:IDENTIFICATION
+
+Serial number     : SEBX0005000356      
+
+MUX channel       : ON - 02
+
+
+PARAMETERS
+
+Sig LED current   : 040
+
+Ref LED current   : 090
+
+Frequency         : 060
+
+Sending interval  : 0000
+
+Pulse lenght      : 06
+
+Red REF comp.     : ON
+
+Temperature comp. : ON
+
+
+FIRMWARE
+
+ver.4.039.A3.ST   : 04/30/07, 09:14:36
+
+@m02:RDY
+
+
+</MIOMReport><MIOM-NO>02</MIOM-NO><MIOM-SERIAL-NO>SEBX0005000356</MIOM-SERIAL-NO><DataFolder>C:\Users\mucilaginibacter\Documents\University_Lake_Respiration\20150327_UL102</DataFolder><Element>OXY</Element><sBatchNo>PSt5-1249-01</sBatchNo><sCurrentUser>admin</sCurrentUser><OXYCalibration><PhaseAngleCal0>54.97</PhaseAngleCal0><PhaseAngleCal100>47.87</PhaseAngleCal100><TempCal0>23.1</TempCal0><MeasTemperature>23.04</MeasTemperature><AirPressure>978</AirPressure></OXYCalibration><pHCalibration><ØMin>0.0</ØMin><ØMax>0.0</ØMax><pH0>0.0</pH0><dpH>0.0</dpH><AutoZero>F</AutoZero></pHCalibration><REDReference>N</REDReference><REDReferenceDATE>12:00:00 AM</REDReferenceDATE><WHITEReference>N</WHITEReference><WHITEReferenceDATE>12:00:00 AM</WHITEReferenceDATE><StartDate> 3/30/2015 6:27:12 PM</StartDate><StopDate> 4/2/2015 3:17:22 PM</StopDate><INTERVAL>1;5</INTERVAL></Admin><CHDetails><CH01 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-01-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH01><CH02 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-02-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH02><CH03 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-03-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH03><CH04 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-04-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH04><CH05 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-05-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH05><CH06 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-06-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH06><CH07 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-07-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH07><CH08 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-08-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH08><CH09 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-09-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH09><CH10 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-10-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH10><CH11 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-11-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH11><CH12 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-12-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH12><CH13 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-13-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH13><CH14 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-14-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH14><CH15 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-15-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH15><CH16 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-16-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH16><CH17 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-17-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH17><CH18 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-18-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH18><CH19 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-19-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH19><CH20 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-20-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH20><CH21 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-21-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH21><CH22 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-22-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH22><CH23 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-23-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH23><CH24 SN="0"><FileCount>01</FileCount><CHFileName>\MIOM-02-CH-24-FNO-01.dat</CHFileName><TotRecCount>815</TotRecCount></CH24></CHDetails></PRESENS>
