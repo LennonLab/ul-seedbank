@@ -71,7 +71,7 @@ for(i in 1:length(fs)){
 cell_count_dat <- cell_counts[-c(1:7),] %>%
   mutate(cell_count = as.numeric(cell_count),
          sample.id = as.numeric(str_remove(sample.id, "UL_"))) %>% 
-  mutate(cell_density = cell_count / 50000 * 10^6 * 10^3) # cells/50000 bead counts * 10^6 beads/ml * 10^3 ml/L
+  mutate(cell_density = cell_count / 50000 * 10^6) # cells/50000 bead counts * 10^6 beads/ml
 
 
 cell_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
@@ -82,7 +82,7 @@ cell_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>%
   scale_y_log10(labels = label_scientific()) +
   scale_x_date(breaks = "3 month") + 
   labs(x = "",
-       y = expression(paste("Cell density (cells ", L^{-1},")")))
+       y = expression(paste("Cell density (cells ", ml^{-1},")")))
 
 temp_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
   filter(sample.id < 60) %>% 
