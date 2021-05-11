@@ -23,7 +23,7 @@ require(colorspace)
 require(parallel)
 library(foreach)
 library(doParallel)
-
+library(forecast)
 source("bin/mothur_tools.R")
 
 cv <- function(x){
@@ -190,6 +190,70 @@ data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.act
   #scale_y_log10() +
   #annotation_logticks(sides = "l") +
   ggsave("figures/fig4.pdf", bg = "white", height = 3/4*6, width = 6)
+
+alpha_dat <- data.frame(date = env.data$date, sample.id = env.data$sample.id, Total = alpha.div.total, Active = alpha.div.active) %>% 
+  mutate(diversity_ratio = Total / Active)
+alpha_ts <- arima(alpha_dat$diversity_ratio,
+                  order = c(1, 0, 0))
+alpha_ts
+
+env.preds <- (env.data[c("sample.id", "temp", "secchi")])
+env.tsmod <- na.omit(env.preds) %>% inner_join(alpha_dat, by = "sample.id")
+env_preds_scaled <- model.matrix(~ temp + secchi, data = as.data.frame(scale(env.tsmod[,c(2:3)])))[,-1]
+
+# alpha_env_ts <- arima(env.tsmod$diversity_ratio, 
+#       order = c(1,0,0), 
+#       xreg = env_preds_scaled[,])
+
+alpha_env_ts <- auto.arima(y = env.tsmod$diversity_ratio, 
+                           xreg = env_preds_scaled)
+alpha_env_ts_pred <- forecast(alpha_env_ts, level = c(95), xreg = env_preds_scaled)
+
+forecast::autoplot(alpha_env_ts, 
+                   ts.colour = "black", 
+                   predict.colour = "red", predict.linetype = "dashed",
+                   conf.int.fill = "red")
+
+plot(alpha_env_ts$residuals)
+plot(fitted(alpha_env_ts))
+
+model.fit.to.plot <- data.frame(
+  "date" = env.tsmod$date,
+  "fitted" = alpha_env_ts_pred$fitted,
+  "upper" = alpha_env_ts_pred$upper,
+  "lower" = alpha_env_ts_pred$lower
+)
+names(model.fit.to.plot)[c(3,4)] = c("upper", "lower")
+
+ggplot(data = env.tsmod) + 
+  geom_rect(mapping = aes(xmin = as_date("2013-10-01"), xmax = as_date("2014-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "white", alpha = 0.1) +
+  geom_rect(mapping = aes(xmin = as_date("2014-10-01"), xmax = as_date("2015-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "white", alpha = 0.1) +
+  
+  # add ARIMA model
+  
+  geom_line(data = model.fit.to.plot, aes(x = date, y = fitted), size = .8) +
+  geom_ribbon(data = model.fit.to.plot, aes(x = date, ymin = lower, ymax = upper), color = "grey50", alpha = 0.2) + 
+  
+  # add data points
+  #geom_line(aes(x = date, y = diversity_ratio), size = .7, alpha = .25, show.legend = F) +
+  geom_point(aes(x = date, y = diversity_ratio, color = lubridate::month(date, label = T)), size = 3, alpha = 0.8) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+  
+  
+  # ylab(expression(paste(alpha,"-diversity ratio (total / active richness)"))) +
+  ylab("Seed bank richness ratio \n(total : active)") +
+  xlab("Time") +
+  scale_x_date(date_breaks = "3 month", 
+               date_minor_breaks = "1 month", 
+               date_labels = "%b") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  ggsave("figures/fig4_arima.pdf", bg = "white", height = 3/4*6, width = 6)
+
 ```
 
 
@@ -642,11 +706,30 @@ shuffle.ts <- function(species.ts){
   species.ts[sample(1:length(species.ts))]
 }
 
+# different null model to test against, here just proportional drift
+null.stochastic <- function(comm){
+  comm.rel <- decostand(comm, method = "total")
+  comm.null <- comm.rel * 0
+  comm.proportions <- colMeans(comm.rel)
+  for(r in 1:nrow(comm.null)){
+    abunds.i <- sample(x = 1:ncol(comm.null), 
+                       size = sum(comm[r,]),
+                       prob = comm.rel[r,],
+                       replace = TRUE)
+    abunds.i <- factor(abunds.i, levels = as.character(1:ncol(comm.null)), ordered = T)
+    table.i <- table(abunds.i)
+    table.i[table.i==0] <- 0.5
+    comm.null[r,] <- table.i
+  }
+  return(comm.null)
+}
+
 get.null.distr <- function(comm, iters = 5000){
   pb <- progress_bar$new(total = iters)
   nfd.cov <- rep(NA, iters)
   for(i in 1:iters){
-    nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+    nullcom <- null.stochastic(comm)
+    #nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
     nfd <- calc.neg.freq.dep(nullcom)
     nfd <- nfd %>% filter(-fd > 0)
     nfd.cov[i] <- cov(log(nfd$eq.freq), log(-nfd$fd))
@@ -656,7 +739,8 @@ get.null.distr <- function(comm, iters = 5000){
 }
 
 get.cov <- function(comm){
-  nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+  nullcom <- null.stochastic(comm)
+  #nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
   nfd <- calc.neg.freq.dep(nullcom)
   nfd <- nfd %>% filter(-fd > 0)
   return(cov(log(nfd$eq.freq), log(-nfd$fd)))
@@ -672,6 +756,7 @@ OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
 ncol(OTUs.total.persistent)
+
 
 
 OTUs.total.nozero <- replace(OTUs.total.persistent, which(OTUs.total.persistent == 0), .5)
@@ -802,23 +887,23 @@ ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) +
 
 ```{r}
 # Generate null distributions
-iternum <- 5000
+iternum <- 500
 # tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 # act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
 
 # #setup parallel backend to use many processors
-# cores=detectCores(logical = F)
-# cl <- makeCluster(cores) #not to overload your computer
-# registerDoParallel(cl)
-# 
-# tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#    get.cov(OTUs.total.nozero)
-# }
-# act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#    get.cov(OTUs.active.nozero)
-# }
-# #stop cluster
-# stopCluster(cl)
+cores=detectCores(logical = F)
+cl <- makeCluster(cores) #not to overload your computer
+registerDoParallel(cl)
+
+tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.total.nozero)
+}
+act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.active.nozero)
+}
+#stop cluster
+stopCluster(cl)
 
 
 # Compare observed with null
