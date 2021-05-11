@@ -423,61 +423,7 @@ fig.pca
 ```
 
 ### Explaining temporal beta diversity
-#### DDRs
-```{r}
-# 
-# samplingdays <- env.data$date
-# time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
-# for(i in 1:length(samplingdays)){
-#   for(j in 1:length(samplingdays)){
-#     time.dist[i,j] <- (samplingdays[i] - samplingdays[j])
-#   }
-# }
-# time.dist <- as.dist(time.dist)
-# 
-# env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
-# env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
-# 
-# 
-# OTUs.betapart <- beta.pair(x = OTUs.total.pa, index.family = "jaccard")
-# OTUs.nest <- OTUs.betapart$beta.jne
-# OTUs.turn <- OTUs.betapart$beta.jtu
-# OTUs.jac <- OTUs.betapart$beta.jac
-# 
-# OTUs.act.betapart <- beta.pair(x = OTUs.active.pa, index.family = "jaccard")
-# OTUs.act.nest <- OTUs.act.betapart$beta.jne
-# OTUs.act.turn <- OTUs.act.betapart$beta.jtu
-# OTUs.act.jac <- OTUs.act.betapart$beta.jac
-# 
-# 
-# timeddr <- data.frame(total_turn = as.vector(OTUs.turn),
-#                       total_nest = as.vector(OTUs.nest),
-#                       total_jac = as.vector(OTUs.jac),
-#                       active_turn = as.vector(OTUs.act.turn),
-#                       active_nest = as.vector(OTUs.act.nest),
-#                       active_jac = as.vector(OTUs.act.jac),
-#                       EnvDist = as.vector(env.dist), 
-#                       Time = as.vector(time.dist))
-# 
-# betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-#   ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
-#   geom_jitter(alpha = 0.1, size = 0.7) +
-#   geom_smooth(size = 2, method = "lm") +
-#   scale_y_continuous(limits = c(0,1))
-# 
-# betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-#   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
-#   geom_jitter(alpha = 0.1, size = 0.7) +
-#   geom_smooth(size = 2) +
-#   ylab("Community Dissimilarity\n") + 
-#   xlab("Time lag (days)") +
-#   scale_y_continuous(limits = c(0,1))
-# 
-# plot_grid(betapart.ddr.time + theme(legend.position = "none"), 
-#           betapart.ddr.env, ncol = 2, align = 'hv', axis = 'l',
-#           labels = c("A", "B")) +
-#   ggsave(filename = "figures/betapart_ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
-```
+
 #### RDA
 ```{r}
 #### Constrained Ordination
