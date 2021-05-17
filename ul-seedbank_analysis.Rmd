@@ -1192,48 +1192,6 @@ yes_sb_taxa <- persistent_seedbank_ornot %>% filter(persistent == T) %>%
   left_join(OTU.tax)
 
 
-cbind.data.frame(OTU = colnames(OTUs.total),
-                 times_activated = otu.reap, 
-                 times_present = otu.pres,
-                 relabund_active = otu.active.relabund,
-                 relabund_total = otu.total.relabund) %>%
-  filter(times_present > 0) %>% 
-  filter(relabund_total > 0) %>% 
-  filter(times_present > 1) %>% 
-  mutate(percent_transition = times_activated/times_present) %>% 
-  mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Seed bank reliant")) %>% 
-  mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
-  ggplot(aes(y = times_activated, x = relabund_total, color = seedbank)) + 
-  geom_jitter(width = 0.005, height = 0.005, alpha = 0.25) + 
-  geom_smooth() + 
-  facet_wrap(~persistent) +
-  ylab("Number of activations from seed bank") +
-  xlab("Average relative abundance in total community") +
-  scale_x_log10() 
-  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
-
-cbind.data.frame(OTU = colnames(OTUs.total),
-                 times_activated = otu.reap, 
-                 times_present = otu.pres,
-                 relabund_active = otu.active.relabund,
-                 relabund_total = otu.total.relabund) %>%
-  filter(times_present > 0) %>% 
-  filter(relabund_total > 0) %>% 
-  filter(relabund_active > 0) %>% 
-  filter(times_present > 1) %>% 
-  mutate(percent_transition = times_activated/times_present) %>% 
-  mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Seed bank reliant")) %>% 
-  mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
-  ggplot(aes(y = times_activated, x = relabund_active, color = seedbank)) + 
-  geom_jitter(width = 0.005, height = 0.005, alpha = 0.25) + 
-  geom_smooth() + 
-  facet_wrap(~persistent) +
-  ylab("Number of activations from seed bank") +
-  xlab("Average relative abundance in active community") +
-  scale_x_log10()
-  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
-
-
 
 reactivations <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
@@ -1287,8 +1245,6 @@ obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
   filter(subset == "Active Portion")
   
-obs_corr <- cor(obs_dat$times_activated, obs_dat$relabund)
-
 # pull out taxa who are present > 50% of time but inactive > 50% of time
 # these may be potential seed bankers or sink populations form soils
 cbind.data.frame(times_inactive = otu.reap, presences = otu.pres) %>%
@@ -1320,9 +1276,9 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
   
   # sim
   print("Generating DNA null models.")
-  DNAsims <- as.array(simulate(DNAnullcom, nsim = n))
+  DNAsims <- as.array(simulate(DNAnullcom, nsim = n, seed = 1))
   print("Generating RNA null models.")
-  RNAsims <- as.array(simulate(RNAnullcom, nsim = n))
+  RNAsims <- as.array(simulate(RNAnullcom, nsim = n, seed = 1))
   
   # loop through null models
   print("Analyzing sim output:")
