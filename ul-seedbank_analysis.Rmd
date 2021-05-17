@@ -1339,20 +1339,20 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
 }
 
 # # Run Sims
-# null_dist_tot <- list(corr = vector(), dat = data.frame()) # <- reap.nullmod(n = 100, algorithm = "c0_ind")
-# 
-# nsims = 1000
-# while(nsims > 0){
-#   # run this batch of sims
-#   sims_to_run <- min(100, nsims)
-#   null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_ind")
-#   
-#   null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
-#   null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
-#   
-#   nsims <- nsims - sims_to_run
-#   print(paste("There are", nsims, "simulations remaining."))
-# }
+null_dist_tot <- list(corr = vector(), dat = data.frame())
+
+nsims = 10
+while(nsims > 0){
+  # run this batch of sims
+  sims_to_run <- min(100, nsims)
+  null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_samp")
+
+  null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
+  null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
+
+  nsims <- nsims - sims_to_run
+  print(paste("There are", nsims, "simulations remaining."))
+}
 
 #saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
 null_dist_tot <- readRDS("analysis/null_dists_reactivations.rda")
@@ -1367,7 +1367,7 @@ null_dist_toplot <- null_dist_tot$dat %>%
 
 null_dist_toplot %>% 
   ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
-  geom_jitter(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.05) +
+  geom_point(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.05) +
   geom_line(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
   geom_point(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
   geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = 1, method = "loess", se = F) +
@@ -1380,7 +1380,8 @@ null_dist_toplot %>%
   ggsave("figures/fig5.pdf", width = 6, height = 3/4*6) +
   ggsave("figures/fig5.png", width = 6, height = 3/4*6, dpi = 500)
   
-corr
+
+# create a graph of standardized effect sizes for each point, relative to the overall relabund (not the avg. of sites), which should be kept constant by the shuffling algorithm. So there should be 82 OTUs and 82 SES values 
 ```
 
 
