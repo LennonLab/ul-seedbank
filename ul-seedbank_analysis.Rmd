@@ -236,7 +236,7 @@ ggplot(data = env.tsmod) +
   # add ARIMA model
   
   geom_line(data = model.fit.to.plot, aes(x = date, y = fitted), size = .8) +
-  geom_ribbon(data = model.fit.to.plot, aes(x = date, ymin = lower, ymax = upper), color = "grey50", alpha = 0.2) + 
+  geom_ribbon(data = model.fit.to.plot, aes(x = date, ymin = lower, ymax = upper), fill = "grey50", alpha = 0.2) + 
   
   # add data points
   #geom_line(aes(x = date, y = diversity_ratio), size = .7, alpha = .25, show.legend = F) +
@@ -1968,5 +1968,43 @@ composite_plot <- growth_plot %>% insert_left(tree_plot)
 ggsave(plot = composite_plot, filename = "figures/tree_growth_composite.pdf", width = 12, height = 12)
 
 
+```
+
+```{r}
+env.vars 
+
+cbind.data.frame(env.vars, decostand(OTUs.active.persistent, method = "total")) %>% 
+  gather(-temp, -spc, -secchi, -ph, -tp, -tn, -doc, key = "OTU", value = "Abundance") %>% 
+  gather(temp, spc, secchi, ph, tp, tn, doc, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point() + 
+  geom_smooth(se=F, span = 0.05) +
+  facet_wrap(~Variable, scales = "free")
+
+set.seed(123)
+cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
+  gather(-temp, key = "OTU", value = "Abundance") %>% 
+  gather(temp, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point(alpha = 0.3) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.5) +
+  facet_wrap(~OTU, scales = "free") +
+  labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
+  theme(legend.position = "none")+
+  ggsave("figures/figS4_taxa-by-env.pdf", width = 5*4, height = 5*3)
+
+set.seed(123)
+cbind.data.frame(env.vars['spc'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
+  gather(-spc, key = "OTU", value = "Abundance") %>% 
+  gather(spc, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point(alpha = 0.3) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.5) +
+  facet_wrap(~OTU, scales = "free") +
+  labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
+  theme(legend.position = "none")
 ```
 
