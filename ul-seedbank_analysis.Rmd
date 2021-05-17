@@ -142,6 +142,11 @@ OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 
+# separate OTUs present across the nearly whole time series
+OTUs.total.persistent <- OTUs.total[,which(
+  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
+OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
+
 
 # Define color pallette
 my.cols <- viridis(4, begin = .3, end = 0.8)
@@ -716,10 +721,6 @@ get.cov <- function(comm){
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
 
 
-# separate OTUs present across the nearly whole time series
-OTUs.total.persistent <- OTUs.total[,which(
-  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
-OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
 ncol(OTUs.total.persistent)
@@ -1656,28 +1657,34 @@ cbind.data.frame(env.vars, decostand(OTUs.active.persistent, method = "total")) 
   facet_wrap(~Variable, scales = "free")
 
 set.seed(123)
+dat_for_mod <- cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)])
+
+
+set.seed(123)
 cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
   gather(-temp, key = "OTU", value = "Abundance") %>% 
   gather(temp, key = "Variable", value = "Value") %>% 
 
   ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
-  geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.5) +
+  geom_point(alpha = 0.5) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.8) +
   facet_wrap(~OTU, scales = "free") +
   labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
   theme(legend.position = "none")+
   ggsave("figures/figS4_taxa-by-env.pdf", width = 5*4, height = 5*3)
 
 set.seed(123)
-cbind.data.frame(env.vars['spc'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
-  gather(-spc, key = "OTU", value = "Abundance") %>% 
-  gather(spc, key = "Variable", value = "Value") %>% 
+cbind.data.frame(env.vars['temp'], decostand(OTUs.total.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
+  gather(-temp, key = "OTU", value = "Abundance") %>% 
+  gather(temp, key = "Variable", value = "Value") %>% 
 
   ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
-  geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.5) +
+  geom_point(alpha = 0.5) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.8) +
   facet_wrap(~OTU, scales = "free") +
   labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
-  theme(legend.position = "none")
+  theme(legend.position = "none")#+
+  #ggsave("figures/figS4_taxa-by-env.pdf", width = 5*4, height = 5*3)
+
 ```
 
