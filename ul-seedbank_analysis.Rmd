@@ -24,6 +24,7 @@ require(parallel)
 library(foreach)
 library(doParallel)
 library(forecast)
+library(broom)
 source("bin/mothur_tools.R")
 
 cv <- function(x){
@@ -648,6 +649,26 @@ calc.neg.freq.dep <- function(sbs){
   return(na.omit(cbind.data.frame(eq.freq, fd)))
 }
 
+calc.neg.freq.dep <- function(sbs){
+  y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+  for(i in 1:(nrow(sbs)-1)){
+    y.s[i,] = log(sbs[i+1,] / sbs[i,])
+  }
+  eq.freq <- vector(length = ncol(y.s))
+  fd <- vector(length = ncol(y.s))
+  sbs.rel <- decostand(sbs[-nrow(sbs),], method = "total")
+  for(i in 1:ncol(y.s)){
+    mod <- deming::deming(y.s[,i] ~ sbs.rel[,i], cv = FALSE)
+    eq.freq[i] <- mean(sbs.rel[,i])
+    fd[i] <- coef(mod)[2]
+  }
+  # plot(log10(eq.freq), log10(-fd), 
+  #      ylab = "log10 Negative Freq. Dependence",
+  #      xlab = "log10 Equilibrium Frequency")
+  return(na.omit(cbind.data.frame(eq.freq, fd)))
+}
+
+
 shuffle.ts <- function(species.ts){
   species.ts[sample(1:length(species.ts))]
 }
@@ -685,8 +706,8 @@ get.null.distr <- function(comm, iters = 5000){
 }
 
 get.cov <- function(comm){
-  nullcom <- null.stochastic(comm)
-  #nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
+  #nullcom <- null.stochastic(comm)
+  nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
   nfd <- calc.neg.freq.dep(nullcom)
   nfd <- nfd %>% filter(-fd > 0)
   return(cov(log(nfd$eq.freq), log(-nfd$fd)))
@@ -713,7 +734,7 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point(alpha = 0.5) + 
   scale_y_log10() + 
   scale_x_log10() +
-  geom_smooth(method = "lm") + 
+  geom_smooth(method = "lm", color = "black") + 
   ylab("Negative Frequency Dependence") + 
   xlab("Equilibrium Frequency") +
   ggsave("figures/NFD_total.pdf", width = 6, height = 3/4*6)
@@ -773,15 +794,17 @@ sbs <- rownames_to_column(sbs, var = "sample.id")
 y.s <- gather(y.s, -sample.id, key = "OTU", value = "lambda")
 sbs <- gather(sbs, -sample.id, key = "OTU", value = "abund")
 joint_data <- left_join(y.s, sbs)
+
 ggplot(joint_data, aes(x = abund, y = lambda)) + 
   geom_hline(yintercept = 0, alpha = 0.2) +
   geom_point(alpha = 0.3) + 
   geom_smooth(method = "lm") + 
   theme(legend.position = "none") + 
+  scale_x_log10() +
   facet_wrap(~OTU) +
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
-  ggsave("figures/NFD_individual_OTUs_active.pdf", height = 20, width = 30)
+  ggsave("figures/NFD_individual_OTUs_active.pdf", height = 20*1.5, width = 30*1.5)
 
 nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
   geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
@@ -811,13 +834,15 @@ y.s <- gather(y.s, -sample.id, key = "OTU", value = "lambda")
 sbs <- gather(sbs, -sample.id, key = "OTU", value = "abund")
 joint_data <- left_join(y.s, sbs)
 ggplot(joint_data, aes(x = abund, y = lambda)) + 
+  geom_hline(yintercept = 0, alpha = 0.2) +
   geom_point(alpha = 0.3) + 
   geom_smooth(method = "lm") + 
   theme(legend.position = "none") + 
   facet_wrap(~OTU) +
+  scale_x_log10() +
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
-  ggsave("figures/NFD_individual_OTUs_total.pdf", height = 20, width = 30)
+  ggsave("figures/NFD_individual_OTUs_total.pdf", height = 20*1.5, width = 30*1.5)
 
 ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
   geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
@@ -833,7 +858,7 @@ ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) +
 
 ```{r}
 # Generate null distributions
-iternum <- 500
+iternum <- 5000
 # tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
 # act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
 
@@ -850,6 +875,9 @@ act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse"
 }
 #stop cluster
 stopCluster(cl)
+
+saveRDS(tot.nd, file = "analysis/temp-results/nfd_tot_null.rda")
+saveRDS(act.nd, file = "analysis/temp-results/nfd_act_null.rda")
 
 
 # Compare observed with null
@@ -1468,7 +1496,9 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   scale_x_log10()
   #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
 
-cbind.data.frame(OTU = colnames(OTUs.total),
+
+
+reactivations <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
                  times_present = otu.pres,
                  relabund_active = otu.active.relabund,
@@ -1483,16 +1513,25 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   filter(persistent == "Persistent") %>% 
   gather(relabund_active, relabund_total, key = "subset", value = "relabund") %>% 
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
-  filter(subset == "Active Portion") %>% 
+  filter(subset == "Active Portion") 
+
+
+exp.mod <- nls(times_activated ~ b*exp(-alpha*log10(relabund)), data = reactivations, start = list(alpha=1, b = 1))
+plot(exp.mod)
+summary(exp.mod)
+
+reactivations %>% 
   ggplot(aes(y = times_activated, x = relabund)) + 
   geom_point(size = 3, alpha = 0.5) + 
-  geom_smooth(color = "black", span = 1) + 
+  geom_line(data = augment(exp.mod), aes(x = relabund, y = .fitted), size = 1) + 
+  #geom_smooth(color = "black", span = 1) + 
   #facet_wrap(~subset, ncol = 1) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
   scale_x_log10() +
   ggsave("figures/fig5a.pdf", width = 6, height = 3/4*6)
+
 
 obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
