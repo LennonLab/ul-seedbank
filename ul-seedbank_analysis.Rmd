@@ -1168,6 +1168,13 @@ otu.active.relabund <- apply(decostand((OTUs.active), method = "total"),
                             MARGIN = 2,
                             FUN = nzmean)
 
+overall_relabund <- function(comm){
+  return( (colSums(comm)/sum(colSums(comm))) )
+}
+
+otu.total.relabund <- overall_relabund(OTUs.total)
+otu.active.relabund <- overall_relabund(OTUs.active)
+
 
 persistent_taxa <- colnames(OTUs.total.persistent)
 
@@ -1291,12 +1298,15 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
     otu.reap <- reappearance.score(DNA = nullcom_total, RNA = nullcom_active)
     otu.pres <- colSums(nullcom_total > 0)
     
-    otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
-    otu.active.relabund <- apply(decostand((nullcom_active), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
+    # otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
+    #                         MARGIN = 2,
+    #                         FUN = nzmean)
+    # otu.active.relabund <- apply(decostand((nullcom_active), method = "total"),
+    #                         MARGIN = 2,
+    #                         FUN = nzmean)
+    
+    otu.total.relabund <- overall_relabund(nullcom_total)
+    otu.active.relabund <- overall_relabund(nullcom_active)
 
 
     to_correlate <- cbind.data.frame(OTU = colnames(nullcom_total),
@@ -1341,7 +1351,7 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
 # # Run Sims
 null_dist_tot <- list(corr = vector(), dat = data.frame())
 
-nsims = 10
+nsims = 1000
 while(nsims > 0){
   # run this batch of sims
   sims_to_run <- min(100, nsims)
@@ -1354,8 +1364,8 @@ while(nsims > 0){
   print(paste("There are", nsims, "simulations remaining."))
 }
 
-#saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
-null_dist_tot <- readRDS("analysis/null_dists_reactivations.rda")
+saveRDS(null_dist_tot, "analysis/null_dists_reactivations_c0samp.rda")
+null_dist_tot <- readRDS("analysis/null_dists_reactivations_c0samp.rda")
 # analyze null dist
 hist(null_dist_tot$corr, xlim = c(-.35,-.1))
 abline(v = obs_corr)
@@ -1364,6 +1374,31 @@ null_dist_toplot <- null_dist_tot$dat %>%
   mutate(sim = as.character(sim)) %>% 
   bind_rows(bind_cols(sim = "observed", obs_dat)) %>% 
   mutate(obsim = ifelse(sim == "observed", "Observed", "Simulated")) 
+
+null_calc_meansd <- null_dist_toplot %>% 
+  filter(obsim == "Simulated") %>% 
+  group_by(OTU) %>% 
+  mutate(taxon_mean = mean(times_activated),
+         taxon_sd = sd(times_activated)) %>% 
+  select(OTU, taxon_mean, taxon_sd, relabund) %>% 
+  unique(.)
+
+null_dist_toplot %>% 
+  filter(obsim == "Observed") %>% 
+  mutate(observed_reactivations = times_activated) %>% 
+  select(OTU, observed_reactivations) %>% 
+  right_join(null_calc_meansd, by = "OTU") %>% 
+  mutate(taxon_ses = (observed_reactivations - taxon_mean)/taxon_sd) %>% 
+  
+  ggplot(aes(x = relabund, y = taxon_ses, label = OTU)) + 
+  geom_hline(yintercept = 2, alpha = 0.25, linetype = "dashed") +
+  geom_hline(yintercept = -2, alpha = 0.25, linetype = "dashed") + 
+  geom_point(alpha = .8, aes(color = abs(taxon_ses) > 2)) +
+  geom_text_repel(data = . %>% filter(abs(taxon_ses) > 2)) +
+  scale_x_log10() +
+  theme(legend.position = "none") + 
+  labs(x = "Overall relative abundance",
+       y = "Standardized Effect Size \nof Reactivation Number")
 
 null_dist_toplot %>% 
   ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
