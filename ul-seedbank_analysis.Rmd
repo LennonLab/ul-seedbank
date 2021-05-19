@@ -1230,7 +1230,7 @@ reactivations %>%
   #facet_wrap(~subset, ncol = 1) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
-  xlab("Average relative abundance") +
+  xlab("Relative abundance") +
   scale_x_log10() +
   ggsave("figures/fig5a.pdf", width = 6, height = 3/4*6)
 
@@ -1270,22 +1270,44 @@ shuffle.ts.total <- function(total.spec.ts){
   return(total.spec.ts[c(sample.index, (sample.index + ts.length))])
 }
 
-reap.nullmod <- function(DNAcomm = OTUs.total,
-                         RNAcomm = OTUs.active,
+reap.nullmod <- function(DNAcomm = OTUs.total.persistent,
+                         RNAcomm = OTUs.active.persistent,
                          samp.design = design, n = 10, algorithm = "c0_samp"){
   
   null_correlations <- numeric(length = n)
   null_data <- data.frame()
+  n_taxa <- ncol(DNAcomm)
+  n_site <- nrow(DNAcomm)
   
   # define null model
   DNAnullcom <- nullmodel(DNAcomm, method = algorithm)
-  RNAnullcom <- nullmodel(RNAcomm, method = algorithm)
+  #RNAnullcom <- nullmodel(RNAcomm, method = algorithm)
   
   # sim
   print("Generating DNA null models.")
   DNAsims <- as.array(simulate(DNAnullcom, nsim = n, seed = 1))
+  
   print("Generating RNA null models.")
-  RNAsims <- as.array(simulate(RNAnullcom, nsim = n, seed = 1))
+  #RNAsims <- as.array(simulate(RNAnullcom, nsim = n, seed = 1))
+  RNAsims <- DNAsims * 0
+  
+  # loop through n sims
+  for(i in 1:n){
+    
+    # loop across taxa
+    for(j in 1:n_taxa){
+      n_active <- sum(RNAcomm[,j] > 0)
+      n_present <- sum(DNAcomm[,j]>0)
+      
+      # create vector of active and present, then randomly sample
+      v <- sample(c(rep(1, n_active), rep(0,(n_present-n_active))))
+      
+      # then add the elements only to the positions where DNA is present
+      RNAsims[which(DNAsims[,j,i] > 0),j,i] <- v
+      
+    }  
+  }
+  
   
   # loop through null models
   print("Analyzing sim output:")
@@ -1364,11 +1386,15 @@ while(nsims > 0){
   print(paste("There are", nsims, "simulations remaining."))
 }
 
-saveRDS(null_dist_tot, "analysis/null_dists_reactivations_c0samp.rda")
-null_dist_tot <- readRDS("analysis/null_dists_reactivations_c0samp.rda")
+saveRDS(null_dist_tot, "analysis/null_dists_reactivations_twostep.rda")
+null_dist_tot <- readRDS("analysis/null_dists_reactivations_twostep.rda")
+
 # analyze null dist
 hist(null_dist_tot$corr, xlim = c(-.35,-.1))
 abline(v = obs_corr)
+
+obs_relabunds <- data.frame(relabund = overall_relabund(OTUs.active.persistent)) %>% 
+  rownames_to_column(var = "OTU")
 
 null_dist_toplot <- null_dist_tot$dat %>% 
   mutate(sim = as.character(sim)) %>% 
@@ -1380,16 +1406,17 @@ null_calc_meansd <- null_dist_toplot %>%
   group_by(OTU) %>% 
   mutate(taxon_mean = mean(times_activated),
          taxon_sd = sd(times_activated)) %>% 
-  select(OTU, taxon_mean, taxon_sd, relabund) %>% 
+  select(OTU, taxon_mean, taxon_sd) %>% 
   unique(.)
 
-null_dist_toplot %>% 
+null_dist_toplot_ses <- null_dist_toplot %>% 
   filter(obsim == "Observed") %>% 
   mutate(observed_reactivations = times_activated) %>% 
   select(OTU, observed_reactivations) %>% 
+  left_join(obs_relabunds, by = "OTU") %>% 
   right_join(null_calc_meansd, by = "OTU") %>% 
-  mutate(taxon_ses = (observed_reactivations - taxon_mean)/taxon_sd) %>% 
-  
+  mutate(taxon_ses = (observed_reactivations - taxon_mean)/taxon_sd)
+null_dist_toplot_ses %>% 
   ggplot(aes(x = relabund, y = taxon_ses, label = OTU)) + 
   geom_hline(yintercept = 2, alpha = 0.25, linetype = "dashed") +
   geom_hline(yintercept = -2, alpha = 0.25, linetype = "dashed") + 
@@ -1398,7 +1425,25 @@ null_dist_toplot %>%
   scale_x_log10() +
   theme(legend.position = "none") + 
   labs(x = "Overall relative abundance",
-       y = "Standardized Effect Size \nof Reactivation Number")
+       y = "Standardized Effect Size \nof Reactivation Number") +
+  ggsave("figures/figS3.pdf", width = 6, height = 3/4*6)
+
+merge(reactivations, select(null_dist_toplot_ses, OTU, taxon_ses)) %>% 
+  mutate(sig = ifelse((taxon_ses) < -2, "Environmentally cued", "Stochastic")) %>% 
+  mutate(sig = ifelse(is.na(sig), "Indeterminate", sig)) %>% 
+  mutate(sig = factor(sig, levels = c("Stochastic", "Environmentally cued", "Indeterminate"))) %>% 
+  ggplot(aes(y = times_activated, x = relabund)) + 
+  geom_point(aes(color = sig), size = 3, alpha = 0.5) + 
+  geom_line(data = augment(exp.mod), aes(x = relabund, y = .fitted), size = 1) + 
+  #geom_smooth(color = "black", span = 1) + 
+  #facet_wrap(~subset, ncol = 1) +
+  theme(legend.position = c(.86,.89), legend.text = element_text(size = 10)) +
+  ylab("Reactivations from seed bank") +
+  xlab("Average relative abundance") +
+  #geom_text_repel(data = . %>% filter(abs(taxon_ses) > 2), aes(label = OTU), max.overlaps = 15) +
+  scale_x_log10() +
+  ggsave("figures/fig5annotated.pdf", width = 8, height = 3/4*8)
+
 
 null_dist_toplot %>% 
   ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
