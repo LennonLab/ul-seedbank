@@ -1426,7 +1426,7 @@ null_dist_toplot_ses %>%
   theme(legend.position = "none") + 
   labs(x = "Overall relative abundance",
        y = "Standardized Effect Size \nof Reactivation Number") +
-  ggsave("figures/figS3.pdf", width = 6, height = 3/4*6)
+  ggsave("figures/figS3.pdf", width = 8, height = 3/4*8)
 
 merge(reactivations, select(null_dist_toplot_ses, OTU, taxon_ses)) %>% 
   mutate(sig = ifelse((taxon_ses) < -2, "Environmentally cued", "Stochastic")) %>% 
