@@ -49,7 +49,7 @@ for(i in 1:length(fs)){
   ft <- transform(f, 
                   "Pacific Blue-H" = asinh(`Pacific Blue-H`), 
                   "APC-H" = asinh(`APC-H`))
-  presel <- list("Pacific Blue-H"=c(9,Inf), "APC-H"=c(8,Inf))
+  presel <- list("Pacific Blue-H"=c(9,Inf), "APC-H"=c(8,10))
   
   # lg <- lymphGate(ft,
   #                 channels = c("Pacific Blue-H", "APC-H"), 
