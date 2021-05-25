@@ -74,25 +74,28 @@ cell_count_dat <- cell_counts[-c(1:7),] %>%
   mutate(cell_density = cell_count / 50000 * 10^6) # cells/50000 bead counts * 10^6 beads/ml
 
 
-cell_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
+(cell_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
   filter(sample.id < 60) %>% 
   ggplot(aes(x = date, y = cell_density)) + 
   geom_point() +
   theme_minimal() +
   scale_y_log10(labels = label_scientific()) +
   scale_x_date(breaks = "3 month") + 
+  geom_smooth(span = 0.25, color = "black") +
   labs(x = "",
-       y = expression(paste("Cell density (cells ", ml^{-1},")")))
+       y = expression(paste("Cell density (cells ", ml^{-1},")"))))
 
-temp_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
+(temp_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
   filter(sample.id < 60) %>% 
   ggplot(aes(x = date, y = temp)) + 
   geom_point() +
   theme_minimal() +
   scale_x_date(breaks = "3 month") + 
+  geom_smooth(span = 0.5, color = "black") + 
   labs(x = "",
-       y = expression(paste("Temperature (",~degree,"C)")))
+       y = expression(paste("Temperature (",~degree,"C)"))))
 
 cell_plot + temp_plot +
   plot_layout(nrow = 2, guides = "collect") +
-  ggsave("figures/cell_density.pdf", width = 6, height = 3/4*6)
+  ggsave("figures/figS1.pdf", width = 6, height = 3/4*6) +
+  ggsave("figures/figS1.png", width = 6, height = 3/4*6, dpi = 600)
