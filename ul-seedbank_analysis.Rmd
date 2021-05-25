@@ -1035,22 +1035,22 @@ reap.nullmod <- function(DNAcomm = OTUs.total.persistent,
 }
 
 # # Run Sims
-null_dist_tot <- list(corr = vector(), dat = data.frame())
-
-nsims = 1000
-while(nsims > 0){
-  # run this batch of sims
-  sims_to_run <- min(100, nsims)
-  null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_samp")
-
-  null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
-  null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
-
-  nsims <- nsims - sims_to_run
-  print(paste("There are", nsims, "simulations remaining."))
-}
-
-saveRDS(null_dist_tot, "analysis/null_dists_reactivations_twostep.rda")
+# null_dist_tot <- list(corr = vector(), dat = data.frame())
+# 
+# nsims = 1000
+# while(nsims > 0){
+#   # run this batch of sims
+#   sims_to_run <- min(100, nsims)
+#   null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_samp")
+# 
+#   null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
+#   null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
+# 
+#   nsims <- nsims - sims_to_run
+#   print(paste("There are", nsims, "simulations remaining."))
+# }
+# 
+# saveRDS(null_dist_tot, "analysis/null_dists_reactivations_twostep.rda")
 null_dist_tot <- readRDS("analysis/null_dists_reactivations_twostep.rda")
 
 
@@ -1141,8 +1141,8 @@ env.pcs <- as.data.frame(env.pca$x) %>% rownames_to_column(var = "sample.id")
 env.pcs$sample.id <- as.numeric(env.pcs$sample.id)
 env.pcs <- env.pcs %>% right_join(env.data)
 
-active.max.growths <- maxgrowth(OTUs.active.persistent + .1)
-active.max.growths$OTU <- colnames(OTUs.active.persistent)
+active.max.growths <- maxgrowth(OTUs.active.nozero)
+active.max.growths$OTU <- colnames(OTUs.active.nozero)
 active.max.growths <- active.max.growths %>% mutate(sample.id = sample)
 
 env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths) %>%
@@ -1267,13 +1267,14 @@ persistent.grs.all %>%
   ggplot(aes(x = date, y = max.growth, group = OTU)) +
   geom_point() +
   labs(x = "Week of the year", 
-       y = expression(Mean~growth~rate~(wk^-1))) +
+       y = expression(Mean~growth~rate~(d^-1))) +
   scale_color_discrete_qualitative(palette = "Dynamic") +
   scale_x_date(date_labels = "%b") +
   coord_polar(theta = "x") +
   theme_minimal()
 
 active.max.growths %>% 
+  mutate(rate = rate/7)  %>%  # convert to per day
   left_join(subset(design, sample.type == "RNA")) %>% 
   mutate(month = lubridate::month(date, label = T, abbr = F)) %>% 
   mutate(rate = round(rate, 3)) %>% 
