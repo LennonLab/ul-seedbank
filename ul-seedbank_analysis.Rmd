@@ -673,8 +673,8 @@ ggplot(joint_data, aes(x = abund, y = lambda)) +
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t])),
        title = "NFD for persistent OTUs when Active") + 
-  ggsave("figures/figS2.pdf", height = 20*1.5, width = 30*1.5) +
-  ggsave("figures/figS2.png", height = 20*1.5, width = 30*1.5, dpi = 500)
+  ggsave("figures/figS3.pdf", height = 20*1.5, width = 30*1.5) +
+  ggsave("figures/figS3.png", height = 20*1.5, width = 30*1.5, dpi = 500)
 
 nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
   geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
@@ -688,8 +688,8 @@ nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)
   #ggsave("figures/NFD_OTU_slopes_active.pdf", height = 3/4*6, width = 6)
 
 plot_grid(nfdactiveslopesfig, nfdactivefig, ncol = 1, labels = "AUTO") +
-  ggsave("figures/figS3.pdf", width = 6, height = 8) +
-  ggsave("figures/figS3.png", width = 6, height = 8, dpi = 600)
+  ggsave("figures/figS4.pdf", width = 6, height = 8) +
+  ggsave("figures/figS4.png", width = 6, height = 8, dpi = 600)
 
 sbs = OTUs.total.nozero
 y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
@@ -1087,8 +1087,8 @@ null_dist_toplot_ses %>%
   theme(legend.position = "none") + 
   labs(x = "Overall relative abundance",
        y = "Standardized Effect Size \nof Reactivation Number") +
-  ggsave("figures/figS4.pdf", width = 8, height = 3/4*8) +
-  ggsave("figures/figS4.png", width = 8, height = 3/4*8, dpi = 600)
+  ggsave("figures/figS5.pdf", width = 8, height = 3/4*8) +
+  ggsave("figures/figS5.png", width = 8, height = 3/4*8, dpi = 600)
 
 merge(reactivations, select(null_dist_toplot_ses, OTU, taxon_ses)) %>% 
   mutate(sig = ifelse((taxon_ses) < -2, "Significant (|SES| > 2)", "N.S. (|SES| < 2)")) %>% 
@@ -1355,8 +1355,8 @@ cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "t
   facet_wrap(~OTU, scales = "free") +
   labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
   theme(legend.position = "none")+
-  ggsave("figures/figS5.pdf", width = 5*4, height = 5*3) +
-  ggsave("figures/figS5.png", width = 5*4, height = 5*3, dpi = 600)
+  ggsave("figures/figS2.pdf", width = 5*4, height = 5*3) +
+  ggsave("figures/figS2.png", width = 5*4, height = 5*3, dpi = 600)
 
 set.seed(123)
 cbind.data.frame(env.vars['temp'], decostand(OTUs.total.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
