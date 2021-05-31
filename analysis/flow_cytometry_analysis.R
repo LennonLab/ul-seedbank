@@ -75,18 +75,18 @@ cell_count_dat <- cell_counts[-c(1:7),] %>%
 
 
 (cell_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
-  filter(sample.id < 60) %>% 
+  dplyr::filter(sample.id < 60) %>% 
   ggplot(aes(x = date, y = cell_density)) + 
   geom_point() +
   theme_minimal() +
-  scale_y_log10(labels = label_scientific()) +
+  scale_y_log10(labels = label_scientific(), lim = c(1.9e5, 3e5)) +
   scale_x_date(breaks = "3 month") + 
   geom_smooth(span = 0.25, color = "black") +
   labs(x = "",
        y = expression(paste("Cell density (cells ", ml^{-1},")"))))
 
 (temp_plot <- env.data %>% left_join(cell_count_dat, by = "sample.id") %>% 
-  filter(sample.id < 60) %>% 
+  dplyr::filter(sample.id < 60) %>% 
   ggplot(aes(x = date, y = temp)) + 
   geom_point() +
   theme_minimal() +
