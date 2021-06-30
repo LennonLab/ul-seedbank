@@ -23,7 +23,8 @@ require(colorspace)
 require(parallel)
 library(foreach)
 library(doParallel)
-
+library(forecast)
+library(broom)
 source("bin/mothur_tools.R")
 
 cv <- function(x){
@@ -141,6 +142,11 @@ OTUs.REL <- decostand(OTUs, method = "hellinger")
 OTUs.REL.total <- OTUs.REL[which(design$sample.type == "DNA"),]
 OTUs.REL.active <- OTUs.REL[which(design$sample.type == "RNA"),]
 
+# separate OTUs present across the nearly whole time series
+OTUs.total.persistent <- OTUs.total[,which(
+  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
+OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
+
 
 # Define color pallette
 my.cols <- viridis(4, begin = .3, end = 0.8)
@@ -189,98 +195,79 @@ data.frame(date = env.data$date, Total = alpha.div.total, Active = alpha.div.act
   #scale_color_manual(values = my.cols[c(4,1)]) +
   #scale_y_log10() +
   #annotation_logticks(sides = "l") +
-  ggsave("figures/fig4.pdf", bg = "white", height = 3/4*6, width = 6)
+  ggsave("figures/fig4_nomod.pdf", bg = "white", height = 3/4*6, width = 6) +
+  ggsave("figures/fig4_nomod.png", height = 3/4*6, width = 6, dpi = 600)
+
+alpha_dat <- data.frame(date = env.data$date, sample.id = env.data$sample.id, Total = alpha.div.total, Active = alpha.div.active) %>% 
+  mutate(diversity_ratio = Total / Active)
+alpha_ts <- arima(alpha_dat$diversity_ratio,
+                  order = c(1, 0, 0))
+alpha_ts
+
+env.preds <- (env.data[c("sample.id", "temp", "secchi")])
+env.tsmod <- na.omit(env.preds) %>% inner_join(alpha_dat, by = "sample.id")
+env_preds_scaled <- model.matrix(~ temp + secchi, data = as.data.frame(scale(env.tsmod[,c(2:3)])))[,-1]
+
+# alpha_env_ts <- arima(env.tsmod$diversity_ratio, 
+#       order = c(1,0,0), 
+#       xreg = env_preds_scaled[,])
+
+alpha_env_ts <- auto.arima(y = env.tsmod$diversity_ratio, 
+                           xreg = env_preds_scaled)
+alpha_env_ts_pred <- forecast(alpha_env_ts, level = c(95), xreg = env_preds_scaled)
+
+forecast::autoplot(alpha_env_ts, 
+                   ts.colour = "black", 
+                   predict.colour = "red", predict.linetype = "dashed",
+                   conf.int.fill = "red")
+
+plot(alpha_env_ts$residuals)
+plot(fitted(alpha_env_ts))
+
+model.fit.to.plot <- data.frame(
+  "date" = env.tsmod$date,
+  "fitted" = alpha_env_ts_pred$fitted,
+  "upper" = alpha_env_ts_pred$upper,
+  "lower" = alpha_env_ts_pred$lower
+)
+names(model.fit.to.plot)[c(3,4)] = c("upper", "lower")
+
+ggplot(data = env.tsmod) + 
+  geom_rect(mapping = aes(xmin = as_date("2013-10-01"), xmax = as_date("2014-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "white", alpha = 0.1) +
+  geom_rect(mapping = aes(xmin = as_date("2014-10-01"), xmax = as_date("2015-03-31"),
+                          ymin = min(diversity_ratio), ymax = max(diversity_ratio)),
+            fill = "white", alpha = 0.1) +
+  
+  # add ARIMA model
+  
+  geom_line(data = model.fit.to.plot, aes(x = date, y = fitted), size = .8) +
+  geom_ribbon(data = model.fit.to.plot, aes(x = date, ymin = lower, ymax = upper), fill = "grey50", alpha = 0.2) + 
+  
+  # add data points
+  #geom_line(aes(x = date, y = diversity_ratio), size = .7, alpha = .25, show.legend = F) +
+  geom_point(aes(x = date, y = diversity_ratio, color = lubridate::month(date, label = T)), size = 3, alpha = 0.8) +
+  scale_color_manual(values = shifter(darken(plasma(12, direction = -1),.1), 9)) +
+  
+  
+  # ylab(expression(paste(alpha,"-diversity ratio (total / active richness)"))) +
+  ylab("Seed bank richness ratio \n(total : active)") +
+  xlab("Time") +
+  scale_x_date(date_breaks = "3 month", 
+               date_minor_breaks = "1 month", 
+               date_labels = "%b") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  ggsave("figures/fig4.pdf", bg = "white", height = 3/4*6, width = 6) +
+  ggsave("figures/fig4.png", width = 6, height = 3/4*6, dpi = 1000)
+
 ```
 
 
 ## How does community composition change over time?
 ### Ordination methods (abundance-based)
 ```{r}
-# # never active
-# transients <- OTUs.REL.total[,which(colSums(OTUs.REL.active) == 0 & colSums(OTUs.REL.total) != 0)]
-# transients.dist <- vegdist(transients, method = "euclidean")
-# transients.pcoa <- cmdscale(transients.dist, eig = T)
-# var1 <- round(eigenvals(transients.pcoa)[1] / sum(eigenvals(transients.pcoa)), 3) * 100
-# var2 <- round(eigenvals(transients.pcoa)[2] / sum(eigenvals(transients.pcoa)), 3) * 100
-# transients.traj <- transients.pcoa$points
-# colnames(transients.traj) <- c("Comp.1", "Comp.2")
-# transients.traj.df <- cbind.data.frame(
-#   sample.id = design$sample.id[which(design$sample.type == "RNA")], transients.traj) 
-# 
-# 
-# filter(design, sample.type == "RNA") %>% 
-#   full_join(transients.traj.df) %>% 
-#   mutate(month = lubridate::month(date, label = T, abbr = T)) %>% 
-#   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
-#   geom_point() + 
-#   scale_color_viridis(discrete = T, "Month") + 
-#   theme_cowplot() + 
-#   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-#   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
-#   coord_fixed() +
-#   stat_ellipse()
-# 
-# 
-# # present, but not active
-# seedbank <- OTUs.REL.active == 0 & OTUs.REL.total != 0
-# seedbank <- seedbank * OTUs.REL.total
-# seedbank <- seedbank[,which(colSums(seedbank) > 0)]
-# # remove transients
-# seedbank <- seedbank[, -which(colnames(seedbank) %in% colnames(transients))]
-# 
-# seedbank.dist <- vegdist(seedbank, method = "euclidean")
-# seedbank.pcoa <- cmdscale(seedbank.dist, eig = T)
-# var1 <- round(eigenvals(seedbank.pcoa)[1] / sum(eigenvals(seedbank.pcoa)), 3) * 100
-# var2 <- round(eigenvals(seedbank.pcoa)[2] / sum(eigenvals(seedbank.pcoa)), 3) * 100
-# seedbank.traj <- seedbank.pcoa$points
-# colnames(seedbank.traj) <- c("Comp.1", "Comp.2")
-# 
-# seedbank.traj.df <- cbind.data.frame(
-#   sample.id = design$sample.id[which(design$sample.type == "RNA")], seedbank.traj) 
-# filter(design, sample.type == "RNA") %>% 
-#   full_join(seedbank.traj.df) %>% 
-#   mutate(month = lubridate::month(date, label = T, abbr = T)) %>%
-#   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
-#   geom_point(alpha = 0.5) +
-#   # geom_path(arrow = arrow(angle = 15, length = unit(0.1, "inches"),
-#   #                         ends = "last", type = "closed")) + 
-#   scale_color_viridis(discrete = T, "Month") + 
-#   geom_point(aes(x = seedbank.traj.df$Comp.1[1], 
-#                  y = seedbank.traj.df$Comp.2[1]),
-#              color = viridis(2)[1], size = 3) +
-#   geom_point(aes(x = seedbank.traj.df$Comp.1[123], 
-#                  y = seedbank.traj.df$Comp.2[123]),
-#              color = viridis(2)[2], size = 3) +
-#   theme_cowplot() + 
-#   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-#   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) +
-#   coord_fixed() +
-#   stat_ellipse() +
-#   ggsave("figures/seedbank_trajectory.pdf", bg = "white", height = 8, width = 10)
-# 
-# filter(design, sample.type == "RNA") %>% 
-#   full_join(seedbank.traj.df) %>% 
-#   mutate(month = lubridate::month(date, label = T, abbr = T)) %>% 
-#   ggplot(aes(x = Comp.1, y = Comp.2, color = month)) + 
-#   geom_point() + 
-#   scale_color_viridis(discrete = T, "Month") + 
-#   theme_cowplot() + 
-#   xlab(paste("PCoA 1 (",var1,"%)", sep = "")) + 
-#   ylab(paste("PCoA 2 (",var2,"%)", sep = "")) + 
-#   stat_ellipse() +
-#   coord_fixed() +
-#   ggsave("figures/seedbank_pcoa.pdf", bg = "white", height = 8, width = 10)
-# 
-
-# seedbank.groups <- filter(design, sample.type == "RNA") %>% 
-#   full_join(seedbank.traj.df) %>% 
-#   mutate(month = month(date, label = T, abbr = T)) %>% 
-#   select(month)
-# seedbank.groups <- factor(seedbank.groups$month)
-# sb.bdisp <- betadisper(seedbank.dist, group = seedbank.groups)
-# plot(sb.bdisp)
-# anova(sb.bdisp)
-# boxplot(sb.bdisp)
 
 active.pca <- rda(OTUs.REL.active)
 
@@ -353,96 +340,43 @@ fig.pca <- full_join(design[which(design$sample.type == "RNA"),], active.traj.df
   ylab(paste("PC 2 (",var2,"%)", sep = "")) +
   coord_fixed() +
   geom_text_repel(data = pc_labs, mapping = aes(x = PC1mean, y = PC2mean, label = lab)) +
-  ggsave("figures/fig1a.pdf", bg = "white", height = 6, width = 8)
+  ggsave("figures/fig1a.pdf", bg = "white", height = 6, width = 8) +
+  ggsave("figures/fig1a.png", height = 6, width = 8, dpi = 600)
 fig.pca
 
 ```
 
 ### Explaining temporal beta diversity
-#### DDRs
-```{r}
-# 
-# samplingdays <- env.data$date
-# time.dist <- matrix(NA, nrow = length(samplingdays), ncol = length(samplingdays))
-# for(i in 1:length(samplingdays)){
-#   for(j in 1:length(samplingdays)){
-#     time.dist[i,j] <- (samplingdays[i] - samplingdays[j])
-#   }
-# }
-# time.dist <- as.dist(time.dist)
-# 
-# env.vars <- env.data[c("temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")]
-# env.dist <- cluster::daisy(scale(env.vars), metric = "gower")
-# 
-# 
-# OTUs.betapart <- beta.pair(x = OTUs.total.pa, index.family = "jaccard")
-# OTUs.nest <- OTUs.betapart$beta.jne
-# OTUs.turn <- OTUs.betapart$beta.jtu
-# OTUs.jac <- OTUs.betapart$beta.jac
-# 
-# OTUs.act.betapart <- beta.pair(x = OTUs.active.pa, index.family = "jaccard")
-# OTUs.act.nest <- OTUs.act.betapart$beta.jne
-# OTUs.act.turn <- OTUs.act.betapart$beta.jtu
-# OTUs.act.jac <- OTUs.act.betapart$beta.jac
-# 
-# 
-# timeddr <- data.frame(total_turn = as.vector(OTUs.turn),
-#                       total_nest = as.vector(OTUs.nest),
-#                       total_jac = as.vector(OTUs.jac),
-#                       active_turn = as.vector(OTUs.act.turn),
-#                       active_nest = as.vector(OTUs.act.nest),
-#                       active_jac = as.vector(OTUs.act.jac),
-#                       EnvDist = as.vector(env.dist), 
-#                       Time = as.vector(time.dist))
-# 
-# betapart.ddr.env <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-#   ggplot(aes(x = EnvDist, y = Dissimilarity, color = Community)) + 
-#   geom_jitter(alpha = 0.1, size = 0.7) +
-#   geom_smooth(size = 2, method = "lm") +
-#   scale_y_continuous(limits = c(0,1))
-# 
-# betapart.ddr.time <- timeddr %>% gather(key = Community, value = Dissimilarity, -EnvDist, -Time) %>% 
-#   ggplot(aes(x = Time, y = Dissimilarity, color = Community)) + 
-#   geom_jitter(alpha = 0.1, size = 0.7) +
-#   geom_smooth(size = 2) +
-#   ylab("Community Dissimilarity\n") + 
-#   xlab("Time lag (days)") +
-#   scale_y_continuous(limits = c(0,1))
-# 
-# plot_grid(betapart.ddr.time + theme(legend.position = "none"), 
-#           betapart.ddr.env, ncol = 2, align = 'hv', axis = 'l',
-#           labels = c("A", "B")) +
-#   ggsave(filename = "figures/betapart_ddrs.pdf", width = 10, height = 6, units = "in", bg = "white")
-```
+
 #### RDA
 ```{r}
 #### Constrained Ordination
-samplingdays <- env.data$date
-intervals <- as.vector(diff.Date(samplingdays))
-w <- 1/(intervals/max(intervals))
-aem.out <- adespatial::aem.time(n = length(samplingdays), w = w, moran = TRUE)
-aem.eigs <- data.frame(aem.out$aem)
-aem.out$values
-colnames(aem.eigs) <- paste0("AEM",seq(1,ncol(aem.eigs)))
-
-env.preds <- na.omit(env.data[c("sample.id", "temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")])
-
-OTUs.rel.act.subs <- OTUs.REL.active[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
-aem.subs <- aem.eigs[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
-
-# #active.varpar <- varpart(OTUs.rel.act.subs, env.preds)
-active.rda.0 <- rda(OTUs.rel.act.subs ~ 1, data = aem.subs)
-# active.rda.1 <- rda(OTUs.rel.act.subs ~ ., data = aem.subs)
-# active.rda.2 <- rda(OTUs.rel.act.subs ~ AEM2 + AEM4 + AEM5 + AEM6, data = aem.subs)
-# active.rda <- ordiR2step(active.rda.0, scope = formula(active.rda.2), direction = "forward")
+# samplingdays <- env.data$date
+# intervals <- as.vector(diff.Date(samplingdays))
+# w <- 1/(intervals/max(intervals))
+# aem.out <- adespatial::aem.time(n = length(samplingdays), w = w, moran = TRUE)
+# aem.eigs <- data.frame(aem.out$aem)
+# aem.out$values
+# colnames(aem.eigs) <- paste0("AEM",seq(1,ncol(aem.eigs)))
 # 
-# active.rda.env.0 <- rda(OTUs.rel.act.subs ~ 1, data = env.preds)
-# active.rda.env.1 <- rda(OTUs.rel.act.subs ~ ., data = env.preds)
-# active.rda.env <- ordiR2step(active.rda.env.0, scope = formula(active.rda.env.1), direction = "forward")
-
-envfit(active.rda.0, aem.subs)
-
-time.mod <- model.matrix(~ -1 + AEM1 + AEM2 + AEM3 + AEM4 + AEM5 + AEM6 + AEM7 + AEM15, data = aem.subs)
+env.preds <- na.omit(env.data[c("sample.id", "temp", "spc", "oxygen", "secchi", "ph", "tp", "tn", "doc")])
+# 
+OTUs.rel.act.subs <- OTUs.REL.active[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
+# aem.subs <- aem.eigs[design$sample.id[which(design$sample.type == "RNA")] %in% env.preds$sample.id,]
+# 
+# # #active.varpar <- varpart(OTUs.rel.act.subs, env.preds)
+# active.rda.0 <- rda(OTUs.rel.act.subs ~ 1, data = aem.subs)
+# # active.rda.1 <- rda(OTUs.rel.act.subs ~ ., data = aem.subs)
+# # active.rda.2 <- rda(OTUs.rel.act.subs ~ AEM2 + AEM4 + AEM5 + AEM6, data = aem.subs)
+# # active.rda <- ordiR2step(active.rda.0, scope = formula(active.rda.2), direction = "forward")
+# # 
+# # active.rda.env.0 <- rda(OTUs.rel.act.subs ~ 1, data = env.preds)
+# # active.rda.env.1 <- rda(OTUs.rel.act.subs ~ ., data = env.preds)
+# # active.rda.env <- ordiR2step(active.rda.env.0, scope = formula(active.rda.env.1), direction = "forward")
+# 
+# envfit(active.rda.0, aem.subs)
+# 
+# time.mod <- model.matrix(~ -1 + AEM1 + AEM2 + AEM3 + AEM4 + AEM5 + AEM6 + AEM7 + AEM15, data = aem.subs)
 
 env.mod <- model.matrix(~ temp + doc + spc + secchi + tn + tp + ph, data = env.preds)
 
@@ -519,7 +453,8 @@ fig.rda <-
   scale_x_reverse() +
   labs(x = paste0("RDA 1 (",var.explain1,"%)"),
        y = paste0("RDA 2 (",var.explain2,"%)")) +
-  ggsave("figures/fig1b1.pdf", bg = "white", height = 6, width = 8)
+  ggsave("figures/fig1b.pdf", bg = "white", height = 6, width = 8) +
+  ggsave("figures/fig1b.png", bg = "white", height = 6, width = 8, dpi = 600)
 fig.rda
 
 # RDA controlling for time
@@ -592,7 +527,8 @@ fig.rda
 
 # plot combined figure
 plot_grid(fig.pca, fig.rda + theme(legend.position = "none"), align = "hv", axis = "lr", ncol = 1, labels = "AUTO") +
-  ggsave("figures/fig1.pdf", height = 9.25, width = 5.5)
+  ggsave("figures/fig1.pdf", height = 9.25, width = 5.5) +
+  ggsave("figures/fig1.png", height = 9.25, width = 5.5, dpi = 700, bg = "white")
 
 ## so this plot shows, after controlling for temporal autocorrelation, which environmental drivers are most important for some taxa
 ```
@@ -638,9 +574,11 @@ calc.neg.freq.dep <- function(sbs){
   return(na.omit(cbind.data.frame(eq.freq, fd)))
 }
 
+
 shuffle.ts <- function(species.ts){
   species.ts[sample(1:length(species.ts))]
 }
+
 
 get.null.distr <- function(comm, iters = 5000){
   pb <- progress_bar$new(total = iters)
@@ -665,13 +603,10 @@ get.cov <- function(comm){
 # OTUs.ranked <- OTUs.total[,names(sort(colSums(OTUs.total), decreasing = T))]
 
 
-# separate OTUs present across the nearly whole time series
-OTUs.total.persistent <- OTUs.total[,which(
-  colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
-OTUs.active.persistent <- OTUs.active[,colnames(OTUs.total.persistent)]
 
 # How many taxa to consider?
 ncol(OTUs.total.persistent)
+
 
 
 OTUs.total.nozero <- replace(OTUs.total.persistent, which(OTUs.total.persistent == 0), .5)
@@ -682,10 +617,10 @@ nfd.total %>% ggplot(aes(x = eq.freq, y = -fd)) +
   geom_point(alpha = 0.5) + 
   scale_y_log10() + 
   scale_x_log10() +
-  geom_smooth(method = "lm") + 
+  geom_smooth(method = "lm", color = "black") + 
   ylab("Negative Frequency Dependence") + 
-  xlab("Equilibrium Frequency") +
-  ggsave("figures/NFD_total.pdf", width = 6, height = 3/4*6)
+  xlab("Equilibrium Frequency") + NULL
+  #ggsave("figures/NFD_total.pdf", width = 6, height = 3/4*6)
 
 OTUs.active.nozero <- replace(OTUs.active.persistent, which(OTUs.active.persistent == 0), .5)
 nfd.active <- calc.neg.freq.dep(OTUs.active.nozero)
@@ -697,8 +632,8 @@ nfdactivefig <- nfd.active %>% ggplot(aes(x = eq.freq, y = -fd)) +
   scale_x_log10() +
   geom_smooth(method = "lm", color = "black") + 
   ylab("Strength of NFD") + 
-  xlab("Equilibrium Frequency") +
-  ggsave("figures/NFD_active.pdf", width = 6, height = 4.5)
+  xlab("Equilibrium Frequency") + NULL
+  #ggsave("figures/NFD_active.pdf", width = 6, height = 4.5)
 
 rbind.data.frame(cbind.data.frame(nfd.active, subset = "Active"),
                  cbind.data.frame(nfd.total, subset = "Total")) %>% 
@@ -708,28 +643,57 @@ rbind.data.frame(cbind.data.frame(nfd.active, subset = "Active"),
   scale_x_log10() +
   geom_smooth(method = "lm") + 
   ylab("Negative Frequency Dependence") + 
-  xlab("Equilibrium Frequency") +
-  ggsave("figures/NFD_both.pdf", width = 6, height = 4.5)
+  xlab("Equilibrium Frequency") + NULL
+  #ggsave("figures/NFD_both.pdf", width = 6, height = 4.5)
  
-cbind.data.frame(active_freq = nfd.active$eq.freq,
-                 active_nfd = nfd.active$fd, 
-                 total_freq = nfd.total$eq.freq,
-                 total_nfd = nfd.total$fd) %>% 
-  mutate(freq_diff = active_freq - total_freq,
-         nfd_diff = active_nfd - total_nfd) %>% 
-  ggplot(aes(x = freq_diff, y = nfd_diff)) + 
-  geom_hline(aes(yintercept = 0), alpha = 0.2) + 
-  geom_vline(aes(xintercept = 0), alpha = 0.2) +
-  geom_point(alpha = 0.5) +
-  annotate("text", x = .06, y = 200, label = "Higher Eq. freq. and\n stronger NFD in active") +
-  annotate("text", -.04, y = -400, label = "Higher Eq. freq. \n and stronger NFD \n in total") +
-  labs(x = "Diff. in equilibrium frequency \n (active - total)",
-       y = "Diff. in NFD \n (active - total)") +
-  ggsave("figures/NFD_comparison.pdf", width = 5, height = 5)
 
 # Raw NFD calculations
 #raw.NFD <- function(sbs){
 sbs = OTUs.active.nozero
+y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
+for(i in 1:(nrow(sbs)-1)){
+  y.s[i,] = log(sbs[i+1,] / sbs[i,])
+}
+y.s <- as.data.frame(y.s)
+colnames(y.s) <- colnames(sbs)
+y.s$sample.id <- rownames(sbs)[-123]
+sbs <- as.data.frame(decostand(sbs, method = "total"))
+sbs <- rownames_to_column(sbs, var = "sample.id")
+y.s <- gather(y.s, -sample.id, key = "OTU", value = "lambda")
+sbs <- gather(sbs, -sample.id, key = "OTU", value = "abund")
+joint_data <- left_join(y.s, sbs)
+
+ggplot(joint_data, aes(x = abund, y = lambda)) + 
+  geom_hline(yintercept = 0, alpha = 0.5) +
+  geom_point(alpha = 0.3, size = 2.5) + 
+  geom_smooth(method = "lm", size = 2.5) + 
+  theme(legend.position = "none", axis.title = element_text(size = 40),
+        strip.text = element_text(size = 32), title = element_text(size = 32),
+        axis.text = element_text(size = 24)) + 
+  scale_x_log10(labels = c(1e-4, 1e-2, 1), breaks = c(1e-4, 1e-2, 1)) +
+  facet_wrap(~OTU, nrow = 9) +
+  labs(x = "Relative abundance at time t",
+       y = expression(Ln(N[t+1]/N[t])),
+       title = "NFD for persistent OTUs when Active") + 
+  ggsave("figures/figS3.pdf", height = 22.5*1.5, width = 30*1.5) +
+  ggsave("figures/figS3.png", height = 22.5*1.5, width = 30*1.5, dpi = 500)
+
+nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
+  geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
+  #geom_point(alpha = 0.3) + 
+  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5, size = 1) + 
+  theme(legend.position = "none") + 
+  labs(x = "Relative abundance at time t",
+       y = expression(Ln(N[t+1]/N[t]))) + 
+  scale_color_discrete_qualitative(palette = "Harmonic") +
+  scale_y_continuous(labels = c(0, -2, -4, -6), breaks = c(0, -2, -4, -6)) + NULL
+  #ggsave("figures/NFD_OTU_slopes_active.pdf", height = 3/4*6, width = 6)
+
+plot_grid(nfdactiveslopesfig, nfdactivefig, ncol = 1, labels = "AUTO") +
+  ggsave("figures/figS4.pdf", width = 6, height = 8) +
+  ggsave("figures/figS4.png", width = 6, height = 8, dpi = 600)
+
+sbs = OTUs.total.nozero
 y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
 for(i in 1:(nrow(sbs)-1)){
   y.s[i,] = log(sbs[i+1,] / sbs[i,])
@@ -748,45 +712,11 @@ ggplot(joint_data, aes(x = abund, y = lambda)) +
   geom_smooth(method = "lm") + 
   theme(legend.position = "none") + 
   facet_wrap(~OTU) +
+  scale_x_log10() +
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
-  ggsave("figures/NFD_individual_OTUs_active.pdf", height = 20, width = 30)
-
-nfdactiveslopesfig <- ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
-  geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
-  #geom_point(alpha = 0.3) + 
-  geom_line(stat = "smooth", method = "lm", se = F, alpha = 0.5, size = 1) + 
-  theme(legend.position = "none") + 
-  labs(x = "Relative abundance at time t",
-       y = expression(Ln(N[t+1]/N[t]))) + 
-  scale_color_discrete_qualitative(palette = "Harmonic") +
-  scale_y_continuous(labels = c(0, -2, -4, -6), breaks = c(0, -2, -4, -6)) +
-  ggsave("figures/NFD_OTU_slopes_active.pdf", height = 3/4*6, width = 6)
-
-plot_grid(nfdactiveslopesfig, nfdactivefig, ncol = 1, labels = "AUTO") +
-  ggsave("figures/figS1.pdf", width = 6, height = 8)
-
-sbs = OTUs.total.nozero
-y.s <- matrix(ncol = ncol(sbs), nrow = nrow(sbs)-1)
-for(i in 1:(nrow(sbs)-1)){
-  y.s[i,] = log(sbs[i+1,] / sbs[i,])
-}
-y.s <- as.data.frame(y.s)
-colnames(y.s) <- colnames(sbs)
-y.s$sample.id <- rownames(sbs)[-123]
-sbs <- as.data.frame(decostand(sbs, method = "total"))
-sbs <- rownames_to_column(sbs, var = "sample.id")
-y.s <- gather(y.s, -sample.id, key = "OTU", value = "lambda")
-sbs <- gather(sbs, -sample.id, key = "OTU", value = "abund")
-joint_data <- left_join(y.s, sbs)
-ggplot(joint_data, aes(x = abund, y = lambda)) + 
-  geom_point(alpha = 0.3) + 
-  geom_smooth(method = "lm") + 
-  theme(legend.position = "none") + 
-  facet_wrap(~OTU) +
-  labs(x = "Relative abundance at time t",
-       y = expression(Ln(N[t+1]/N[t]))) + 
-  ggsave("figures/NFD_individual_OTUs_total.pdf", height = 20, width = 30)
+  NULL
+  #ggsave("figures/NFD_individual_OTUs_total.pdf", height = 20*1.5, width = 30*1.5)
 
 ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) + 
   geom_hline(yintercept = 0, alpha = 0.2, linetype = "dashed") +
@@ -795,30 +725,34 @@ ggplot(joint_data, aes(x = abund, y = lambda, color = OTU)) +
   theme(legend.position = "none") + 
   labs(x = "Relative abundance at time t",
        y = expression(Ln(N[t+1]/N[t]))) + 
-  scale_color_discrete_qualitative(palette = "Harmonic") +
-  ggsave("figures/NFD_OTU_slopes_total.pdf", height = 3/4*6, width = 6)
+  scale_color_discrete_qualitative(palette = "Harmonic") + 
+  NULL
+  #ggsave("figures/NFD_OTU_slopes_total.pdf", height = 3/4*6, width = 6)
 
 ```
 
 ```{r}
 # Generate null distributions
 iternum <- 5000
-# tot.nd <- get.null.distr(comm = OTUs.total.nozero, iters = iternum)
-# act.nd <- get.null.distr(comm = OTUs.active.nozero, iters = iternum)
+
+set.seed(82072)
 
 # #setup parallel backend to use many processors
-# cores=detectCores(logical = F)
-# cl <- makeCluster(cores) #not to overload your computer
-# registerDoParallel(cl)
-# 
-# tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#    get.cov(OTUs.total.nozero)
-# }
-# act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#    get.cov(OTUs.active.nozero)
-# }
-# #stop cluster
-# stopCluster(cl)
+cores=detectCores(logical = F)
+cl <- makeCluster(cores) #not to overload your computer
+registerDoParallel(cl)
+
+tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.total.nozero)
+}
+act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
+   get.cov(OTUs.active.nozero)
+}
+#stop cluster
+stopCluster(cl)
+
+saveRDS(tot.nd, file = "analysis/temp-results/nfd_tot_null.rda")
+saveRDS(act.nd, file = "analysis/temp-results/nfd_act_null.rda")
 
 
 # Compare observed with null
@@ -826,16 +760,6 @@ hist(tot.nd, breaks = 20); abline(v = nfd.total.cov, col = "red")
 (tot.nfd.pval <- rank(c(nfd.total.cov, tot.nd))[1] / length(c(nfd.total.cov, tot.nd)))
 hist(act.nd, breaks = 20); abline(v = nfd.active.cov, col = "red")
 (act.nfd.pval <- rank(c(nfd.active.cov, act.nd))[1] / length(c(nfd.active.cov, act.nd)))
-# hist(sb.nd, breaks = 20); abline(v = nfd.sb.cov, col = "red")
-# (sb.nfd.pval <- rank(c(nfd.sb.cov, sb.nd))[1] / length(c(nfd.sb.cov, sb.nd)))
-
-# nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
-#                  cbind.data.frame(subset = "Active", nfd = nfd.active.cov),
-#                  cbind.data.frame(subset = "Seed Bank", nfd = nfd.sb.cov)) 
-# 
-# nfd.nulldists <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = tot.nd),
-#                  cbind.data.frame(subset = "Active", nfd = act.nd),
-#                  cbind.data.frame(subset = "Seed Bank", nfd = sb.nd)) 
 
 nfd.obs <- rbind.data.frame(cbind.data.frame(subset = "Total", nfd = nfd.total.cov),
                  cbind.data.frame(subset = "Active", nfd = nfd.active.cov)) 
@@ -853,7 +777,8 @@ nfd.nulldists %>%
   coord_flip() +
   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") + 
   xlab("") + 
-  ggsave("figures/fig3.pdf", bg = "white", width = 6, height = 4, units = "in")
+  ggsave("figures/fig3.pdf", bg = "white", width = 6, height = 4, units = "in") +
+  ggsave("figures/fig3.png", bg = "white", width = 6, height = 4, dpi = 600)
 
 # Calculate standardized effect sizes
 nfd.summary <- nfd.nulldists %>% 
@@ -863,465 +788,9 @@ nfd.summary <- nfd.nulldists %>%
 nfd.summary
 ```
 
-```{r}
-# env.data %>% ggplot(aes(x = date, y = temp)) +
-#   geom_point() +
-#   geom_line() +
-#   scale_x_date(breaks = "month") +
-#   coord_flip()
-# 
-# # separate OTUs present across the nearly whole time series
-# index.summer.2013 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) >= 5 & month(date) <=10) %>%
-#   filter(year(date) == 2013) %>% .$sample.name
-# 
-# index.summer.2014 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) >= 5 & month(date) <=10) %>%
-#   filter(year(date) == 2014) %>% .$sample.name
-# 
-# index.summer.2015 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) >= 5 & month(date) <=10) %>%
-#   filter(year(date) == 2015) %>% .$sample.name
-# 
-# nfd.obs.summer <- data.frame(year = NA, subset = NA, nfd = NA)
-# nfd.nulldists.summer <- data.frame(year = NA, subset = NA, nfd = NA)
-# 
-# for(y in c(2013, 2014, 2015)){
-#   index = paste0("index.summer.", y)
-#   OTUs.total.persistent.summer <- OTUs.total[eval(parse(text = index)), which(colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
-#   OTUs.active.persistent.summer <- OTUs.active[,colnames(OTUs.total.persistent.summer)]
-#   
-#   OTUs.total.nozero.summer <- replace(OTUs.total.persistent.summer, which(OTUs.total.persistent.summer == 0), .5)
-#   nfd.total.summer <- calc.neg.freq.dep(OTUs.total.nozero.summer)
-#   nfd.total.summer %>% filter(-fd > 0) -> nfd.total.summer
-#   nfd.total.cov.summer <- cov(log(nfd.total.summer$eq.freq), log(-nfd.total.summer$fd))
-#   nfd.total.summer %>% ggplot(aes(x = eq.freq, y = -fd)) +
-#     geom_point() +
-#     scale_y_log10() +
-#     scale_x_log10() +
-#     geom_smooth(method = "lm") +
-#     ylab("Negative Frequency Dependence") +
-#     xlab("Equilibrium Frequency")
-#   
-#   OTUs.active.nozero.summer <- replace(OTUs.active.persistent.summer, which(OTUs.active.persistent.summer == 0), .5)
-#   nfd.active.summer <- calc.neg.freq.dep(OTUs.active.nozero.summer)
-#   nfd.active.summer %>% filter(-fd > 0) -> nfd.active.summer
-#   nfd.active.cov.summer <- cov(log(nfd.active.summer$eq.freq), log(-nfd.active.summer$fd))
-#   nfd.active.summer %>% ggplot(aes(x = eq.freq, y = -fd)) +
-#     geom_point() +
-#     scale_y_log10() +
-#     scale_x_log10() +
-#     geom_smooth(method = "lm") +
-#     ylab("Negative Frequency Dependence") +
-#     xlab("Equilibrium Frequency")
-#   
-#   
-#   # Generate null distributions
-#   iternum <- 5000
-#   tot.nd.summer <- get.null.distr(comm = OTUs.total.nozero.summer, iters = iternum)
-#   act.nd.summer <- get.null.distr(comm = OTUs.active.nozero.summer, iters = iternum)
-#   
-#   # Compare observed with null
-#   hist(tot.nd.summer, breaks = 20); abline(v = nfd.total.cov.summer, col = "red")
-#   (tot.nfd.pval.summer <- rank(c(nfd.total.cov.summer, tot.nd.summer))[1] / length(c(nfd.total.cov.summer, tot.nd.summer)))
-#   hist(act.nd.summer, breaks = 20); abline(v = nfd.active.cov.summer, col = "red")
-#   (act.nfd.pval.summer <- rank(c(nfd.active.cov.summer, act.nd.summer))[1] / length(c(nfd.active.cov.summer, act.nd.summer)))
-#   
-#   nfd.obs.summer <- rbind.data.frame(
-#     nfd.obs.summer,
-#     cbind.data.frame(year = y, subset = "Total", nfd = nfd.total.cov.summer),
-#     cbind.data.frame(year = y, subset = "Active", nfd = nfd.active.cov.summer))
-#   
-#   nfd.nulldists.summer <- rbind.data.frame(
-#     nfd.nulldists.summer,
-#     cbind.data.frame(year = y, subset = "Total", nfd = tot.nd.summer),
-#     cbind.data.frame(year = y, subset = "Active", nfd = act.nd.summer))
-# }
-# nfd.obs.summer <- na.omit(nfd.obs.summer)
-# nfd.nulldists.summer <- na.omit(nfd.nulldists.summer)
-
-#saveRDS(nfd.obs.summer, "analysis/temp-results/nfd_obs_summer.rda")
-#saveRDS(nfd.nulldists.summer, "analysis/temp-results/nfd_nulldists_summer.rda")
-# nfd.obs.summer <- readRDS("analysis/temp-results/nfd_obs_summer.rda")
-# nfd.nulldists.summer <- readRDS("analysis/temp-results/nfd_nulldists_summer.rda")
-
-
-# nfd.nulldists.summer %>%
-#   ggplot(aes(y = nfd, x = subset)) +
-#   facet_wrap(~ year, ncol = 1) +
-#   #geom_jitter(color = "grey", alpha = 0.1) +
-#   geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
-#   geom_point(data = nfd.obs.summer, aes(x = subset, y = nfd),
-#              color = "black", size = 5, show.legend = F) +
-#   scale_fill_manual(values = my.cols[c(1,4)]) +
-#   coord_flip() +
-#   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
-#   xlab("")
-# 
-# labs <- nfd.nulldists.summer %>% 
-#   group_by(year, subset) %>% 
-#   summarize(mean_nfd = mean(nfd))
-# 
-# nfd.nulldists.summer %>% 
-#   ggplot(aes(x = nfd, fill = subset)) +
-#   facet_wrap(~year, ncol = 1) +
-#   geom_histogram(alpha = 0.5, bins = 100) +
-#   geom_vline(data = nfd.obs.summer, aes(xintercept = nfd, color = subset), size = 1) +
-#   theme(legend.position = "none") +
-#   labs(x = "Cov(EQ frequency, NFD)",
-#        y = "") +
-#   geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
-#   ggsave("figures/nfd_by_year_summer.pdf", width = 4, height = 9)
-# 
-# # Calculate standardized effect sizes
-# nfd.summary.summer <- nfd.nulldists.summer %>%
-#   group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
-#   left_join(nfd.obs.summer) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
-#   mutate(nfd.strength = nfd / mean.nfd)
-# nfd.summary.summer
-# 
-# 
-# (pval.2013.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2013)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Total", year == 2013)$nfd))[1] / 5001)
-# (pval.2013.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2013)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Active", year == 2013)$nfd))[1] / 5001)
-# (pval.2014.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2014)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Total", year == 2014)$nfd))[1] / 5001)
-# (pval.2014.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2014)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Active", year == 2014)$nfd))[1] / 5001)
-# (pval.2015.tot <- rank(c(filter(nfd.obs.summer, subset == "Total", year == 2015)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Total", year == 2015)$nfd))[1] / 5001)
-# (pval.2015.act <- rank(c(filter(nfd.obs.summer, subset == "Active", year == 2015)$nfd, 
-#        filter(nfd.nulldists.summer, subset == "Active", year == 2015)$nfd))[1] / 5001)
-```
-
-```{r}
-# separate OTUs present across the nearly whole time series
-# index.winter.2013 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) <= 5 | month(date) >= 10) %>%
-#   filter(year(date) == 2013) %>% .$sample.name
-# 
-# index.winter.2014 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) <= 5 | month(date) >= 10) %>%
-#   filter(year(date) == 2014) %>% .$sample.name
-# 
-# index.winter.2015 <- design %>%
-#   filter(sample.type == "DNA") %>%
-#   filter(month(date) <= 5 | month(date) >= 10) %>%
-#   filter(year(date) == 2015) %>% .$sample.name
-# 
-# nfd.obs.winter <- data.frame(year = NA, subset = NA, nfd = NA)
-# nfd.nulldists.winter <- data.frame(year = NA, subset = NA, nfd = NA)
-# 
-# for(y in c(2013, 2014, 2015)){
-#   index = paste0("index.winter.", y)
-#   OTUs.total.persistent.winter <- OTUs.total[eval(parse(text = index)), which(colMeans(decostand(OTUs.total, method = "pa")) >= .8)]
-#   OTUs.active.persistent.winter <- OTUs.active[,colnames(OTUs.total.persistent.winter)]
-#   
-#   OTUs.total.nozero.winter <- replace(OTUs.total.persistent.winter, which(OTUs.total.persistent.winter == 0), .5)
-#   nfd.total.winter <- calc.neg.freq.dep(OTUs.total.nozero.winter)
-#   nfd.total.winter %>% filter(-fd > 0) -> nfd.total.winter
-#   nfd.total.cov.winter <- cov(log(nfd.total.winter$eq.freq), log(-nfd.total.winter$fd))
-#   nfd.total.winter %>% ggplot(aes(x = eq.freq, y = -fd)) +
-#     geom_point() +
-#     scale_y_log10() +
-#     scale_x_log10() +
-#     geom_smooth(method = "lm") +
-#     ylab("Negative Frequency Dependence") +
-#     xlab("Equilibrium Frequency")
-#   
-#   OTUs.active.nozero.winter <- replace(OTUs.active.persistent.winter, which(OTUs.active.persistent.winter == 0), .5)
-#   nfd.active.winter <- calc.neg.freq.dep(OTUs.active.nozero.winter)
-#   nfd.active.winter %>% filter(-fd > 0) -> nfd.active.winter
-#   nfd.active.cov.winter <- cov(log(nfd.active.winter$eq.freq), log(-nfd.active.winter$fd))
-#   nfd.active.winter %>% ggplot(aes(x = eq.freq, y = -fd)) +
-#     geom_point() +
-#     scale_y_log10() +
-#     scale_x_log10() +
-#     geom_smooth(method = "lm") +
-#     ylab("Negative Frequency Dependence") +
-#     xlab("Equilibrium Frequency")
-#   
-#   
-#   # Generate null distributions
-#   iternum <- 5000
-#   tot.nd.winter <- get.null.distr(comm = OTUs.total.nozero.winter, iters = iternum)
-#   act.nd.winter <- get.null.distr(comm = OTUs.active.nozero.winter, iters = iternum)
-#   
-#   # Compare observed with null
-#   hist(tot.nd.winter, breaks = 20); abline(v = nfd.total.cov.winter, col = "red")
-#   (tot.nfd.pval.winter <- rank(c(nfd.total.cov.winter, tot.nd.winter))[1] / length(c(nfd.total.cov.winter, tot.nd.winter)))
-#   hist(act.nd.winter, breaks = 20); abline(v = nfd.active.cov.winter, col = "red")
-#   (act.nfd.pval.winter <- rank(c(nfd.active.cov.winter, act.nd.winter))[1] / length(c(nfd.active.cov.winter, act.nd.winter)))
-#   
-#   nfd.obs.winter <- rbind.data.frame(
-#     nfd.obs.winter,
-#     cbind.data.frame(year = y, subset = "Total", nfd = nfd.total.cov.winter),
-#     cbind.data.frame(year = y, subset = "Active", nfd = nfd.active.cov.winter))
-#   
-#   nfd.nulldists.winter <- rbind.data.frame(
-#     nfd.nulldists.winter,
-#     cbind.data.frame(year = y, subset = "Total", nfd = tot.nd.winter),
-#     cbind.data.frame(year = y, subset = "Active", nfd = act.nd.winter))
-# }
-# nfd.obs.winter <- na.omit(nfd.obs.winter)
-# nfd.nulldists.winter <- na.omit(nfd.nulldists.winter)
-
-# saveRDS(nfd.obs.winter, "analysis/temp-results/nfd_obs_winter.rda")
-# saveRDS(nfd.nulldists.winter, "analysis/temp-results/nfd_nulldists_winter.rda")
-# nfd.obs.winter <- readRDS("analysis/temp-results/nfd_obs_winter.rda")
-# nfd.nulldists.winter <- readRDS("analysis/temp-results/nfd_nulldists_winter.rda")
-# 
-# 
-# nfd.nulldists.winter %>%
-#   ggplot(aes(y = nfd, x = subset)) +
-#   facet_wrap(~ year, ncol = 1) +
-#   #geom_jitter(color = "grey", alpha = 0.1) +
-#   geom_violin(alpha = 0.5, show.legend = F, fill = "grey") +
-#   geom_point(data = nfd.obs.winter, aes(x = subset, y = nfd),
-#              color = "black", size = 5, show.legend = F) +
-#   scale_fill_manual(values = my.cols[c(1,4)]) +
-#   coord_flip() +
-#   ylab("Covariance between Equilibrium Frequency\n and Negative Frequency Dependence") +
-#   xlab("")
-# 
-# labs <- nfd.nulldists.winter %>% 
-#   group_by(year, subset) %>% 
-#   summarize(mean_nfd = mean(nfd))
-# 
-# nfd.nulldists.winter %>% 
-#   ggplot(aes(x = nfd, fill = subset)) +
-#   facet_wrap(~year, ncol = 1) +
-#   geom_histogram(alpha = 0.5, bins = 100) +
-#   geom_vline(data = nfd.obs.winter, aes(xintercept = nfd, color = subset), size = 1) +
-#   theme(legend.position = "none") +
-#   labs(x = "Cov(EQ frequency, NFD)",
-#        y = "") +
-#   geom_text(data = labs, aes(x = mean_nfd, y = 100, color = subset, label = subset), color = "black") +
-#   ggsave("figures/nfd_by_year_winter.pdf", width = 4, height = 9)
-# 
-# # Calculate standardized effect sizes
-# nfd.summary.winter <- nfd.nulldists.winter %>%
-#   group_by(subset, year) %>% summarize(mean.nfd = mean(nfd), sd.nfd = sd(nfd)) %>%
-#   left_join(nfd.obs.winter) %>% mutate(nfd.ses = (nfd - mean.nfd)/sd.nfd) %>%
-#   mutate(nfd.strength = nfd / mean.nfd)
-# nfd.summary.winter
-# 
-# 
-# (pval.2013.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2013)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Total", year == 2013)$nfd))[1] / 5001)
-# (pval.2013.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2013)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Active", year == 2013)$nfd))[1] / 5001)
-# (pval.2014.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2014)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Total", year == 2014)$nfd))[1] / 5001)
-# (pval.2014.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2014)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Active", year == 2014)$nfd))[1] / 5001)
-# (pval.2015.tot <- rank(c(filter(nfd.obs.winter, subset == "Total", year == 2015)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Total", year == 2015)$nfd))[1] / 5001)
-# (pval.2015.act <- rank(c(filter(nfd.obs.winter, subset == "Active", year == 2015)$nfd, 
-#        filter(nfd.nulldists.winter, subset == "Active", year == 2015)$nfd))[1] / 5001)
-```
-
-
-```{r}
-# What is the effect of taxa number on response
-# nfd.response <- function(OTUs = NULL, OTUs.active = NULL, num.seq = 10, num.iter = 999, plotit = F, incidence.freq = 0.9, max.taxa = NULL){
-#   
-#   # separate OTUs present across the whole time series
-#   OTUs.ranked <- OTUs[,names(sort(colSums(OTUs), decreasing = T))]
-#   OTUs.persistent <- OTUs.ranked[,which(
-#     colMeans(decostand(OTUs.ranked, method = "pa")) >= incidence.freq)]
-#   
-#   # If we're looking at Active OTUs, make the switch here
-#   if(!is.null(OTUs.active)){
-#     if(is.null(OTUs)) print("please supply total otu table")
-#     OTUs.persistent <- OTUs.active[,colnames(OTUs.persistent)]
-#   }
-#   
-#   # decide how many values of cutoffs to test
-#   max.taxa <- floor(seq(3, min(max.taxa, ncol(OTUs.persistent)), length.out = num.seq))
-#   output <- data.frame(taxa = max.taxa)
-#   
-#   # loop through different otu thresholds
-#   for(i in 1:length(max.taxa)){
-#     if(max.taxa[i] > ncol(OTUs.persistent)) return(output)
-#     otu.thresh <- min(max.taxa[i], ncol(OTUs.persistent))
-#     OTUs.nozero <- OTUs.persistent[,1:otu.thresh] + 10^-10
-#     nfd <- calc.neg.freq.dep(OTUs.nozero)
-#     nfd <- nfd %>% filter(eq.freq > 10^-9) %>% filter(-fd > 0)
-#     nfd.cov <- cov(log(nfd$eq.freq), log(-nfd$fd))
-#     
-#     if(plotit){
-#       nfd %>% 
-#         ggplot(aes(x = eq.freq, y = -fd)) +
-#         geom_point() + 
-#         scale_y_log10() + 
-#         scale_x_log10() +
-#         geom_smooth(method = "lm") + 
-#         ylab("Negative Frequency Dependence") + 
-#         xlab("Equilibrium Frequency")
-#     }
-#     
-#     nd <- get.null.distr(comm = OTUs.nozero, iters = num.iter)
-#     nfd.ses <- (nfd.cov - mean(nd)/sd(nd))
-#     nfd.pval <- rank(c(nfd.cov, nd))[1] / length(c(nfd.cov, nd))
-#     cov.strength <- nfd.cov / mean(nd)
-#     se <- sd(nd)/sqrt(num.iter)
-#     output[i,"p"] <- nfd.pval
-#     output[i,"ses"] <- nfd.ses
-#     output[i,"strength"] <- cov.strength
-#     output[i,"stderr"] <- se
-#     output[i,"mean"] <- mean(nd)
-#     output[i,"nfdcov"] <- nfd.cov
-#   }
-#   
-#   return(output)
-# }
-# 
-# 
-# active.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = OTUs.active, num.seq = 30, num.iter = 999, max.taxa = 100)
-# total.nfd.response <- nfd.response(OTUs = OTUs.total, OTUs.active = NULL, num.seq = 30, num.iter = 999, max.taxa = 100)
-# saveRDS(active.nfd.response, file = "analysis/temp-results/nfd_response_active.rda")
-# saveRDS(total.nfd.response, file = "analysis/temp-results/nfd_response_total.rda")
-
-#setup parallel backend to use many processors
-# cores=detectCores(logical = F)
-# cl <- makeCluster(cores) #not to overload your computer
-# registerDoParallel(cl)
-# iternum <- 5000
-# 
-# sensitivity_analysis_output <- data.frame(NULL)
-# sorted_taxa <- names(sort(colMeans(OTUs.total.nozero)))
-# for(i in seq(3, ncol(OTUs.total.nozero), by = 4)){
-#   
-#   # calculate total 
-#   OTUs.total.subset <- OTUs.total.nozero[,sorted_taxa[1:i]]
-#   tot.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#      get.cov(OTUs.total.subset)
-#   }
-#   obs.nfd <- calc.neg.freq.dep(OTUs.total.subset) %>% 
-#     filter(-fd > 0)  
-#   obs.cov_total <- cov(log(obs.nfd$eq.freq), log(-obs.nfd$fd))
-#   total_df <- cbind.data.frame(N_tax = i, 
-#         N_sim = iternum,
-#         subset = "total",
-#         null_sd = sd(tot.nd), 
-#         null_min = min(tot.nd), 
-#         null_max = max(tot.nd),
-#         null_mean = mean(tot.nd),
-#         obs_cov = obs.cov_total)
-#         
-#   
-#   # calculate active
-#   OTUs.active.subset <- OTUs.active.nozero[,sorted_taxa[1:i]]
-#   act.nd <- foreach(i=1:iternum, .combine=rbind, .packages = c("vegan","tidyverse")) %dopar% {
-#      get.cov(OTUs.active.subset)
-#   }
-#   obs.nfd <- calc.neg.freq.dep(OTUs.active.subset) %>% 
-#     filter(-fd > 0)  
-#   obs.cov_active <- cov(log(obs.nfd$eq.freq), log(-obs.nfd$fd))
-#   active_df <- cbind.data.frame(N_tax = i, 
-#         N_sim = iternum,
-#         subset = "active",
-#         null_sd = sd(act.nd), 
-#         null_min = min(act.nd), 
-#         null_max = max(act.nd),
-#         null_mean = mean(act.nd),
-#         obs_cov = obs.cov_active)
-#   
-#   i_out <- rbind.data.frame(active_df, total_df)
-#   sensitivity_analysis_output <- rbind.data.frame(sensitivity_analysis_output, i_out)
-#   
-# }
-# 
-# #stop cluster
-# stopCluster(cl)
-# 
-# write_csv(sensitivity_analysis_output, "analysis/sensitivity_analysis.csv")
-
-sensitivity_analysis_output <- read_csv("analysis/sensitivity_analysis.csv")
-
-sensitivity_analysis_output %>% 
-  ggplot(aes(x = N_tax, y = obs_cov/null_mean, color = subset)) + 
-  geom_point() + 
-  geom_line()
-
-sensitivity_analysis_output %>% 
-  ggplot(aes(x = N_tax, 
-             y = (obs_cov - null_mean)/null_sd, 
-             color = subset, 
-             shape = subset)) + 
-  geom_hline(yintercept = c(2,-2), alpha = 0.2, linetype = "dashed") +
-  geom_point(alpha = .8, size = 2) + 
-  annotate("text", x = 85, y = -2.5, label = "Total", size = 4.5, color = "black") +
-  annotate("text", x = 85, y = -5.5, label = "Active", size = 4.5, color = "black") +
-  geom_line() +
-  theme(legend.position = "none") +
-  scale_x_continuous(limits = c(0, 87)) +
-  scale_y_continuous(limits = c(NA, 2)) +
-  scale_color_discrete() +
-  labs(x = "Number of taxa", 
-       y = "Standardized Effect Size") + 
-  ggsave("figures/sensitivity_analysis_SES.pdf", width = 6, height = 5)
-
-sensitivity_analysis_output %>% 
-  ggplot(aes(x = N_tax, y = obs_cov, color = subset)) + 
-  geom_point(alpha = .8, size = 2) + 
-  annotate("text", x = 60, y = -.3, label = "Total", size = 4.5, color = "black") +
-  annotate("text", x = 20, y = -.7, label = "Active", size = 4.5, color = "black") +
-  geom_line() +
-  theme(legend.position = "none") +
-  scale_color_discrete() +
-  labs(x = "Number of taxa", 
-       y = "Observed Cov(NFD, Eq. Freq.)") + 
-  ggsave("figures/sensitivity_analysis_obsCov.pdf", width = 6, height = 5)
-
-
-# active.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_active.rda")
-# total.nfd.response <- readRDS(file = "analysis/temp-results/nfd_response_total.rda")
-# 
-# nfd.response.df <- rbind.data.frame(
-#   cbind.data.frame(subset = "active", active.nfd.response),
-#   cbind.data.frame(subset = "total", total.nfd.response))
-# nfd.response.df %>% 
-# #  filter(p < 0.05) %>% 
-#   ggplot(aes(x = taxa, y = strength, color = subset)) +
-#   geom_hline(yintercept = 1) +
-#   geom_point() +
-#   geom_line() +
-#   labs(x = "Number of OTUs included in analysis",
-#        y = "Strength of NFD \n(observed / null mean)") +
-#   ggsave("figures/nfd_sensitivity.pdf", width = 6, height = 4)
-# 
-# cbind.data.frame(taxa = active.nfd.response$taxa, 
-#       strength = active.nfd.response$strength / total.nfd.response$strength) %>% 
-#   ggplot(aes(x = taxa, y = strength)) +
-#   geom_point() +
-#   geom_abline(slope = 0, intercept = 1, color = "gray") +
-#   geom_smooth(method = "loess", se = F) 
-```
 
 # Reappeareance Scores
 ```{r}
-# Calculate a species 
-
-reappearance.score <- function(DNA, RNA){
-  # calculate # of times present but not active
-  otu.diff <- decostand((DNA + RNA), method = "pa") - decostand(RNA, method = "pa")
-  otu.diff.weighted <- otu.diff # * decostand(DNA, method = "total")
-  return(colSums(otu.diff.weighted))
-}
-
-calc.score <- function(species){
-  length()
-}
-
-(OTUs.total - OTUs.active)[,1]
 
 reappearance.score <- function(DNA, RNA, quiet = TRUE){
   
@@ -1355,22 +824,27 @@ reappearance.score <- function(DNA, RNA, quiet = TRUE){
   return(otuscores)
 }
 
-otu.reap <- reappearance.score(DNA = OTUs.total, RNA = OTUs.active)
+otu.reap <- reappearance.score(DNA = OTUs.total, RNA = OTUs.active, quiet = TRUE)
 otu.pres <- colSums(OTUs.total.pa)
-otu.total.relabund2 <- colMeans(decostand((OTUs.total), method = "total"))
-otu.active.relabund2 <- colMeans(decostand((OTUs.active), method = "total"))
 
 # Compute mean without zeroes
-nzmean <- function(x) {
-    if (all(x==0)) 0 else mean(x[x!=0])
+# nzmean <- function(x) {
+#     if (all(x==0)) 0 else mean(x[x!=0])
+# }
+# 
+# otu.total.relabund <- apply(decostand((OTUs.total), method = "total"),
+#                             MARGIN = 2,
+#                             FUN = nzmean)
+# otu.active.relabund <- apply(decostand((OTUs.active), method = "total"),
+#                             MARGIN = 2,
+#                             FUN = nzmean)
+
+overall_relabund <- function(comm){
+  return( (colSums(comm)/sum(colSums(comm))) )
 }
 
-otu.total.relabund <- apply(decostand((OTUs.total), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
-otu.active.relabund <- apply(decostand((OTUs.active), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
+otu.total.relabund <- overall_relabund(OTUs.total)
+otu.active.relabund <- overall_relabund(OTUs.active)
 
 
 persistent_taxa <- colnames(OTUs.total.persistent)
@@ -1396,48 +870,8 @@ yes_sb_taxa <- persistent_seedbank_ornot %>% filter(persistent == T) %>%
   left_join(OTU.tax)
 
 
-cbind.data.frame(OTU = colnames(OTUs.total),
-                 times_activated = otu.reap, 
-                 times_present = otu.pres,
-                 relabund_active = otu.active.relabund,
-                 relabund_total = otu.total.relabund) %>%
-  filter(times_present > 0) %>% 
-  filter(relabund_total > 0) %>% 
-  filter(times_present > 1) %>% 
-  mutate(percent_transition = times_activated/times_present) %>% 
-  mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Seed bank reliant")) %>% 
-  mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
-  ggplot(aes(y = times_activated, x = relabund_total, color = seedbank)) + 
-  geom_jitter(width = 0.005, height = 0.005, alpha = 0.25) + 
-  geom_smooth() + 
-  facet_wrap(~persistent) +
-  ylab("Number of activations from seed bank") +
-  xlab("Average relative abundance in total community") +
-  scale_x_log10() 
-  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
 
-cbind.data.frame(OTU = colnames(OTUs.total),
-                 times_activated = otu.reap, 
-                 times_present = otu.pres,
-                 relabund_active = otu.active.relabund,
-                 relabund_total = otu.total.relabund) %>%
-  filter(times_present > 0) %>% 
-  filter(relabund_total > 0) %>% 
-  filter(relabund_active > 0) %>% 
-  filter(times_present > 1) %>% 
-  mutate(percent_transition = times_activated/times_present) %>% 
-  mutate(seedbank = ifelse(percent_transition == 0, "Not reliant on seed bank", "Seed bank reliant")) %>% 
-  mutate(persistent = ifelse(OTU %in% persistent_taxa, "Persistent", "Non-persistent")) %>% 
-  ggplot(aes(y = times_activated, x = relabund_active, color = seedbank)) + 
-  geom_jitter(width = 0.005, height = 0.005, alpha = 0.25) + 
-  geom_smooth() + 
-  facet_wrap(~persistent) +
-  ylab("Number of activations from seed bank") +
-  xlab("Average relative abundance in active community") +
-  scale_x_log10()
-  #ggsave("figures/incidence_by_inactivity.pdf", bg = "white", width = 6, height = 6)
-
-cbind.data.frame(OTU = colnames(OTUs.total),
+reactivations <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
                  times_present = otu.pres,
                  relabund_active = otu.active.relabund,
@@ -1452,16 +886,26 @@ cbind.data.frame(OTU = colnames(OTUs.total),
   filter(persistent == "Persistent") %>% 
   gather(relabund_active, relabund_total, key = "subset", value = "relabund") %>% 
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
-  filter(subset == "Active Portion") %>% 
+  filter(subset == "Active Portion") 
+
+
+exp.mod <- nls(times_activated ~ b*exp(-alpha*log10(relabund)), data = reactivations, start = list(alpha=1, b = 1))
+plot(exp.mod)
+summary(exp.mod)
+
+reactivations %>% 
   ggplot(aes(y = times_activated, x = relabund)) + 
   geom_point(size = 3, alpha = 0.5) + 
-  geom_smooth(color = "black", span = 1) + 
+  geom_line(data = augment(exp.mod), aes(x = relabund, y = .fitted), size = 1) + 
+  #geom_smooth(color = "black", span = 1) + 
   #facet_wrap(~subset, ncol = 1) +
   theme(legend.position = "bottom", legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
-  xlab("Average relative abundance") +
+  xlab("Relative abundance") +
   scale_x_log10() +
-  ggsave("figures/fig5a.pdf", width = 6, height = 3/4*6)
+  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6) +
+  ggsave("figures/fig5.png", width = 6, height = 3/4*6, dpi = 600)
+
 
 obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
                  times_activated = otu.reap, 
@@ -1480,8 +924,6 @@ obs_dat <- cbind.data.frame(OTU = colnames(OTUs.total),
   mutate(subset = ifelse(subset == "relabund_active", "Active Portion", "Total Community")) %>% 
   filter(subset == "Active Portion")
   
-obs_corr <- cor(obs_dat$times_activated, obs_dat$relabund)
-
 # pull out taxa who are present > 50% of time but inactive > 50% of time
 # these may be potential seed bankers or sink populations form soils
 cbind.data.frame(times_inactive = otu.reap, presences = otu.pres) %>%
@@ -1494,28 +936,44 @@ subset(OTU.tax, OTU %in% seedbank.taxa$OTU)
 
 # compare with a null model
 ```{r}
-shuffle.ts.total <- function(total.spec.ts){
-  ts.length = length((total.spec.ts)) / 2
-  sample.index = sample(1:ts.length)
-  return(total.spec.ts[c(sample.index, (sample.index + ts.length))])
-}
-
-reap.nullmod <- function(DNAcomm = OTUs.total,
-                         RNAcomm = OTUs.active,
+reap.nullmod <- function(DNAcomm = OTUs.total.persistent,
+                         RNAcomm = OTUs.active.persistent,
                          samp.design = design, n = 10, algorithm = "c0_samp"){
   
   null_correlations <- numeric(length = n)
   null_data <- data.frame()
+  n_taxa <- ncol(DNAcomm)
+  n_site <- nrow(DNAcomm)
   
   # define null model
   DNAnullcom <- nullmodel(DNAcomm, method = algorithm)
-  RNAnullcom <- nullmodel(RNAcomm, method = algorithm)
+  #RNAnullcom <- nullmodel(RNAcomm, method = algorithm)
   
   # sim
   print("Generating DNA null models.")
-  DNAsims <- as.array(simulate(DNAnullcom, nsim = n))
+  DNAsims <- as.array(simulate(DNAnullcom, nsim = n, seed = 1))
+  
   print("Generating RNA null models.")
-  RNAsims <- as.array(simulate(RNAnullcom, nsim = n))
+  #RNAsims <- as.array(simulate(RNAnullcom, nsim = n, seed = 1))
+  RNAsims <- DNAsims * 0
+  
+  # loop through n sims
+  for(i in 1:n){
+    
+    # loop across taxa
+    for(j in 1:n_taxa){
+      n_active <- sum(RNAcomm[,j] > 0)
+      n_present <- sum(DNAcomm[,j]>0)
+      
+      # create vector of active and present, then randomly sample
+      v <- sample(c(rep(1, n_active), rep(0,(n_present-n_active))))
+      
+      # then add the elements only to the positions where DNA is present
+      RNAsims[which(DNAsims[,j,i] > 0),j,i] <- v
+      
+    }  
+  }
+  
   
   # loop through null models
   print("Analyzing sim output:")
@@ -1528,12 +986,15 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
     otu.reap <- reappearance.score(DNA = nullcom_total, RNA = nullcom_active)
     otu.pres <- colSums(nullcom_total > 0)
     
-    otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
-    otu.active.relabund <- apply(decostand((nullcom_active), method = "total"),
-                            MARGIN = 2,
-                            FUN = nzmean)
+    # otu.total.relabund <- apply(decostand((nullcom_total), method = "total"),
+    #                         MARGIN = 2,
+    #                         FUN = nzmean)
+    # otu.active.relabund <- apply(decostand((nullcom_active), method = "total"),
+    #                         MARGIN = 2,
+    #                         FUN = nzmean)
+    
+    otu.total.relabund <- overall_relabund(nullcom_total)
+    otu.active.relabund <- overall_relabund(nullcom_active)
 
 
     to_correlate <- cbind.data.frame(OTU = colnames(nullcom_total),
@@ -1576,152 +1037,82 @@ reap.nullmod <- function(DNAcomm = OTUs.total,
 }
 
 # # Run Sims
-# null_dist_tot <- list(corr = vector(), dat = data.frame()) # <- reap.nullmod(n = 100, algorithm = "c0_ind")
+# null_dist_tot <- list(corr = vector(), dat = data.frame())
 # 
 # nsims = 1000
 # while(nsims > 0){
 #   # run this batch of sims
 #   sims_to_run <- min(100, nsims)
-#   null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_ind")
-#   
+#   null_dist_i <- reap.nullmod(n = sims_to_run, algorithm = "c0_samp")
+# 
 #   null_dist_tot$corr <- c(null_dist_tot$corr, null_dist_i$corr)
 #   null_dist_tot$dat <- rbind.data.frame(null_dist_tot$dat, null_dist_i$dat)
-#   
+# 
 #   nsims <- nsims - sims_to_run
 #   print(paste("There are", nsims, "simulations remaining."))
 # }
+# 
+# saveRDS(null_dist_tot, "analysis/null_dists_reactivations_twostep.rda")
+null_dist_tot <- readRDS("analysis/null_dists_reactivations_twostep.rda")
 
-#saveRDS(null_dist_tot, "analysis/null_dists_reactivations.rda")
-null_dist_tot <- readRDS("analysis/null_dists_reactivations.rda")
-# analyze null dist
-hist(null_dist_tot$corr, xlim = c(-.35,-.1))
-abline(v = obs_corr)
+
+obs_relabunds <- data.frame(relabund = overall_relabund(OTUs.active.persistent)) %>% 
+  rownames_to_column(var = "OTU")
 
 null_dist_toplot <- null_dist_tot$dat %>% 
   mutate(sim = as.character(sim)) %>% 
   bind_rows(bind_cols(sim = "observed", obs_dat)) %>% 
   mutate(obsim = ifelse(sim == "observed", "Observed", "Simulated")) 
 
-null_dist_toplot %>% 
-  ggplot(aes(x = relabund, y = times_activated, group = sim, color = obsim)) + 
-  geom_jitter(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.05) +
-  geom_line(data = subset(null_dist_toplot, obsim == "Simulated"), size = 1, alpha = 0.2, stat = "smooth", span = .5, method = "loess", se = F) +
-  geom_point(data = subset(null_dist_toplot, obsim == "Observed"), size = 3, alpha = 0.5) + 
-  geom_line(data = subset(null_dist_toplot, obsim == "Observed"), size = 1, alpha = 1, stat = "smooth", span = 1, method = "loess", se = F) +
-  theme(legend.position = c(.85, .85), legend.text = element_text(size = 10)) +
+null_calc_meansd <- null_dist_toplot %>% 
+  filter(obsim == "Simulated") %>% 
+  group_by(OTU) %>% 
+  mutate(taxon_mean = mean(times_activated),
+         taxon_sd = sd(times_activated)) %>% 
+  select(OTU, taxon_mean, taxon_sd) %>% 
+  unique(.)
+
+null_dist_toplot_ses <- null_dist_toplot %>% 
+  filter(obsim == "Observed") %>% 
+  mutate(observed_reactivations = times_activated) %>% 
+  select(OTU, observed_reactivations) %>% 
+  left_join(obs_relabunds, by = "OTU") %>% 
+  right_join(null_calc_meansd, by = "OTU") %>% 
+  mutate(taxon_ses = (observed_reactivations - taxon_mean)/taxon_sd)
+null_dist_toplot_ses %>% 
+  ggplot(aes(x = relabund, y = taxon_ses, label = OTU)) + 
+  geom_hline(yintercept = 2, alpha = 0.25, linetype = "dashed") +
+  geom_hline(yintercept = -2, alpha = 0.25, linetype = "dashed") + 
+  geom_point(alpha = .8, aes(color = abs(taxon_ses) > 2)) +
+  geom_text_repel(data = . %>% filter(abs(taxon_ses) > 2)) +
+  scale_x_log10() +
+  theme(legend.position = "none") + 
+  labs(x = "Overall relative abundance",
+       y = "Standardized Effect Size \nof Reactivation Number") +
+  ggsave("figures/figS5.pdf", width = 8, height = 3/4*8) +
+  ggsave("figures/figS5.png", width = 8, height = 3/4*8, dpi = 600)
+
+merge(reactivations, select(null_dist_toplot_ses, OTU, taxon_ses)) %>% 
+  mutate(sig = ifelse((taxon_ses) < -2, "Significant (|SES| > 2)", "N.S. (|SES| < 2)")) %>% 
+  mutate(sig = ifelse(is.na(sig), "Indeterminate", sig)) %>% 
+  mutate(sig = factor(sig, levels = c("N.S. (|SES| < 2)", "Significant (|SES| > 2)", "Indeterminate"))) %>% 
+  ggplot(aes(y = times_activated, x = relabund)) + 
+  geom_point(aes(color = sig), size = 3, alpha = 0.8) + 
+  geom_line(data = augment(exp.mod), aes(x = relabund, y = .fitted), size = 1) + 
+  #geom_smooth(color = "black", span = 1) + 
+  #facet_wrap(~subset, ncol = 1) +
+  theme(legend.position = c(.86,.89), legend.text = element_text(size = 10)) +
   ylab("Reactivations from seed bank") +
   xlab("Average relative abundance") +
-  scale_x_log10() + 
-  scale_color_manual(values = c("black", "gray70")) +
-  #scale_alpha_discrete(range = c(.8, 0.1)) + 
-  ggsave("figures/fig5.pdf", width = 6, height = 3/4*6) +
-  ggsave("figures/fig5.png", width = 6, height = 3/4*6, dpi = 500)
-  
-corr
-```
+  #geom_text_repel(data = . %>% filter(abs(taxon_ses) > 2), aes(label = OTU), max.overlaps = 15) +
+  scale_x_log10() +
+  scale_color_discrete_qualitative(palette = "Harmonic") +
+  ggsave("figures/fig5annotated.pdf", width = 8, height = 3/4*8) +
+  ggsave("figures/fig5annotated.png", width = 8, height = 3/4*8, dpi = 600)
 
-# Taxa Time Relationship
-```{r}
-# ttr.calc <- function(comm){
-#   comm.pa <- decostand(comm, method = 'pa')
-#   weeknum <- 1:nrow(comm.pa)
-#   otusum <- numeric(nrow(comm.pa))
-#   for(week in weeknum){
-#     otusum[week] <- ifelse(week > 1, sum(colSums(comm.pa[1:week,]) > 0), 
-#                            sum(comm.pa[1,]))
-#   }
-#   return(cbind.data.frame(week = weeknum, taxa = otusum))
-# }
-# 
-# active.ttr <- ttr.calc(OTUs.active)
-# total.ttr <- ttr.calc(OTUs.total)
-# 
-# ttrs <- rbind.data.frame(cbind.data.frame(
-#   subset = "active", active.ttr),
-#                  cbind.data.frame(subset = "total", total.ttr))
-# ttrs %>% 
-#   ggplot(aes(x = week, y = taxa, color = subset)) + 
-#   geom_line(size = 2) + 
-#   ggsave("figures/taxa_time_relationships.pdf", bg = "white", height = 8, width = 8)
-```
-
-# Conditionally Rare Taxa
-```{r}
-# identifyCRT <- function(spec.dyn){
-#   n <- length(spec.dyn)
-#   skew.numer <- sum((spec.dyn - mean(spec.dyn))^3)/n
-#   skew.denom <- (sum((spec.dyn - mean(spec.dyn))^2)/n)^(3/2)
-#   kurt.num <- sum((spec.dyn - mean(spec.dyn))^4)/n
-#   kurt.denom <- (sum((spec.dyn - mean(spec.dyn))^2)/n)^2
-#   skewness <- skew.numer / skew.denom
-#   kurtosis <- kurt.num / kurt.denom
-#   b <- (1 + skewness^2) / (kurtosis + 3)
-#   return(b)
-#  }
-# 
-# activeCRTs <- apply(X = OTUs.REL.active[,which(colMeans(OTUs.active.pa) > 0.5)], MARGIN = 2, FUN = identifyCRT)
-# totalCRTs <- apply(X = OTUs.REL.total[,which(colMeans(OTUs.total.pa) > 0.5)], MARGIN = 2, FUN = identifyCRT)
-# hist(activeCRTs)
-# hist(totalCRTs)
-# 
-# 
-# candidateCRTs <- names(activeCRTs[which(activeCRTs > 0.6)])
-# candidateCRTs <- OTUs.REL.active[,candidateCRTs]
-# candidateCRTs <- candidateCRTs[,apply(candidateCRTs, 2, max) > 0.01]
-# matplot(candidateCRTs, type = 'l')
-# subset(OTU.tax, OTU %in% colnames(candidateCRTs))
-# as.data.frame(candidateCRTs) %>% 
-#   rownames_to_column(var = "sample.name") %>% 
-#   left_join(design) %>% 
-#   gather(-sample.name, -sample.id, -sample.type, -date, 
-#          key = "OTU", value = "abundance") %>% 
-#   left_join(OTU.tax) %>% 
-#   ggplot(aes(x = date, y = abundance, color = Genus)) + 
-#   geom_line()
 
 ```
 
-
-```{r}
-# shuffle.ts <- function(species.ts){
-#   species.ts[sample(1:length(species.ts))]
-# }
-# 
-# get.null.mrs <- function(comm, iters = 100){
-#   pb <- progress_bar$new(total = iters)
-#   mrs.null <- rep(NA, iters)
-#   for(i in 1:iters){
-#     nullcom <- apply(comm, MARGIN = 2, FUN = shuffle.ts) # randomize sampling order
-#     nullcom.ranks <- decostand(nullcom, method = "rank")
-#     S <- specnumber(nullcom.ranks[-nrow(nullcom.ranks),])
-#     nmrs <- rowSums(abs(diff(nullcom.ranks))) / S
-#     mrs.null[i] <- mean(nmrs)
-#     pb$tick()
-#   }
-#   return(mrs.null)
-# }
-# 
-# total.null <- get.null.mrs(OTUs.total)
-# active.null <- get.null.mrs(OTUs.active)
-# 
-# OTUs.total.ranks <- decostand(OTUs.total, method = "rank")
-# MRS.total <- rowSums(abs(diff(OTUs.total.ranks))) / specnumber(OTUs.total.ranks[-nrow(OTUs.total.ranks),])
-# plot(MRS.total, type = 'l')
-# 
-# OTUs.active.ranks <- decostand(OTUs.active, method = "rank")
-# MRS.active <- rowSums(abs(diff(OTUs.active.ranks))) / specnumber(OTUs.active.ranks[-nrow(OTUs.active.ranks),])
-# points(MRS.active, type = 'l', col = 'red')
-# 
-# MRS.total.ses <- (MRS.total - mean(total.null)) / sd(total.null)
-# MRS.active.ses <- (MRS.active - mean(active.null)) / sd(active.null)
-# matplot(cbind(MRS.total.ses, MRS.active.ses), type = 'l')
-# 
-# plot(env.vars$temp[-123], MRS.total)
-# plot(env.vars$temp[-123], MRS.active)
-# 
-# plot(MRS.total, MRS.active)
-# abline(0,1)
-```
 
 ```{r}
 maxgrowth <- function(sbs){
@@ -1752,8 +1143,8 @@ env.pcs <- as.data.frame(env.pca$x) %>% rownames_to_column(var = "sample.id")
 env.pcs$sample.id <- as.numeric(env.pcs$sample.id)
 env.pcs <- env.pcs %>% right_join(env.data)
 
-active.max.growths <- maxgrowth(OTUs.active.persistent + .1)
-active.max.growths$OTU <- colnames(OTUs.active.persistent)
+active.max.growths <- maxgrowth(OTUs.active.nozero)
+active.max.growths$OTU <- colnames(OTUs.active.nozero)
 active.max.growths <- active.max.growths %>% mutate(sample.id = sample)
 
 env.pcs.subset <- subset(env.pcs, sample.id %in% active.max.growths$sample.id) %>% inner_join(active.max.growths) %>%
@@ -1777,9 +1168,7 @@ env.pcs.subset %>%
             aes(x = 3*PC1, y = 3*PC2, label = rownames(env.pca$rotation)),
             box.padding = .5, point.padding = .5, alpha = 0.9,
             segment.alpha = 0) +
-  coord_fixed() +
-  ggsave("figures/figS2.pdf", bg = "white", width = 8, height = 8)
-
+  coord_fixed()
 
 getgrs <-  function(sbs){
   # create new matrix to calculate growth rates
@@ -1789,7 +1178,7 @@ getgrs <-  function(sbs){
   }
   return(y.s)
 }
-persistent.grs <- getgrs(OTUs.active.persistent + .1)
+persistent.grs <- getgrs(OTUs.active.nozero)
 colnames(persistent.grs) <- colnames(OTUs.active.persistent)
 rownames(persistent.grs) <- rownames(OTUs.active.persistent)[-1]
 
@@ -1871,7 +1260,8 @@ persistent.grs.all %>%
         #panel.grid.major.y = element_blank(),
         panel.grid.minor.x = element_blank()) +
   #scale_y_continuous(limits = c(-5, 12)) +
-   ggsave("figures/fig2.pdf", bg = "white", width = 4.5, height = 4.5)
+  ggsave("figures/fig2.pdf", bg = "white", width = 4.5, height = 4.5) +
+  ggsave("figures/fig2.png", bg = "white", width = 4.5, height = 4.5, dpi = 600)
   # ggsave("figures/max_growth_date.png", bg = "white", width = 12, height = 16, dpi = 600)
 
 persistent.grs.all %>%
@@ -1879,13 +1269,14 @@ persistent.grs.all %>%
   ggplot(aes(x = date, y = max.growth, group = OTU)) +
   geom_point() +
   labs(x = "Week of the year", 
-       y = expression(Mean~growth~rate~(wk^-1))) +
+       y = expression(Mean~growth~rate~(d^-1))) +
   scale_color_discrete_qualitative(palette = "Dynamic") +
   scale_x_date(date_labels = "%b") +
   coord_polar(theta = "x") +
   theme_minimal()
 
 active.max.growths %>% 
+  mutate(rate = rate/7)  %>%  # convert to per day
   left_join(subset(design, sample.type == "RNA")) %>% 
   mutate(month = lubridate::month(date, label = T, abbr = F)) %>% 
   mutate(rate = round(rate, 3)) %>% 
@@ -1936,6 +1327,53 @@ growth_plot <- persistent.grs.all %>%
 composite_plot <- growth_plot %>% insert_left(tree_plot)
 ggsave(plot = composite_plot, filename = "figures/tree_growth_composite.pdf", width = 12, height = 12)
 
+
+```
+
+```{r}
+env.pcs
+
+cbind.data.frame(env.vars, decostand(OTUs.active.persistent, method = "total")) %>% 
+  gather(-temp, -spc, -secchi, -ph, -tp, -tn, -doc, key = "OTU", value = "Abundance") %>% 
+  gather(temp, spc, secchi, ph, tp, tn, doc, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point() + 
+  geom_smooth(se=F, span = 0.05) +
+  facet_wrap(~Variable, scales = "free")
+
+set.seed(123)
+dat_for_mod <- cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)])
+
+
+set.seed(123)
+cbind.data.frame(env.vars['temp'], decostand(OTUs.active.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
+  gather(-temp, key = "OTU", value = "Abundance") %>% 
+  gather(temp, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point(alpha = 0.7, size = 2) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.8, size = 1) +
+  facet_wrap(~OTU, scales = "free") +
+  labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
+  theme(legend.position = "none", axis.title = element_text(size = 32),
+        strip.text = element_text(size = 24), title = element_text(size = 24),
+        axis.text.y = element_text(size = 18)) + 
+  ggsave("figures/figS2.pdf", width = 5*4, height = 5*3) +
+  ggsave("figures/figS2.png", width = 5*4, height = 5*3, dpi = 600)
+
+set.seed(123)
+cbind.data.frame(env.vars['temp'], decostand(OTUs.total.persistent, method = "total")[,sample(1:ncol(OTUs.active.persistent),25)]) %>% 
+  gather(-temp, key = "OTU", value = "Abundance") %>% 
+  gather(temp, key = "Variable", value = "Value") %>% 
+
+  ggplot(aes(x = Value, y = log10(Abundance), color = OTU)) + 
+  geom_point(alpha = 0.5) + 
+  geom_line(stat = "smooth", method = "lm", formula = y ~ x + I(x^2), se=F, span = 0.5, alpha = 0.8) +
+  facet_wrap(~OTU, scales = "free") +
+  labs(x = "Temperature", y = expression(paste(Log[10], "(Relative Abundance)")))  +
+  theme(legend.position = "none")#+
+  #ggsave("figures/figS4_taxa-by-env.pdf", width = 5*4, height = 5*3)
 
 ```
 
